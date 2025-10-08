@@ -1,0 +1,12 @@
+ssh_key: /root/.ssh/id_ed25519
+remote_host: backup@somehost.com
+remote_dest: /data/Backups
+max_age_days: 7
+
+volumes:
+  - name: root
+    src: /@
+    snapdir: /snapshots/@
+  - name: home
+    src: /@home
+    snapdir: /snapshots/@home
