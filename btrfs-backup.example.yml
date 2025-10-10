@@ -6,7 +6,7 @@ max_age_days: 7
 volumes:
   - name: root
     src: /@
-    snapdir: /snapshots/@
+    snapdir: /.snapshots/btrfs-backup
   - name: home
     src: /@home
-    snapdir: /snapshots/@home
+    snapdir: /home/.snapshots/btrfs-backup
