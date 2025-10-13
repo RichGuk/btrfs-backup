@@ -29,7 +29,7 @@ func buildSSHArgs(cfg *Config, remoteCmd string, extraOpts ...string) []string {
 	if cfg.SSHKey != "" {
 		sshArgs = append(sshArgs, "-i", cfg.SSHKey)
 	}
-	sshArgs = append(sshArgs, "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null")
+	sshArgs = append(sshArgs, "-o", "StrictHostKeyChecking=no")
 	sshArgs = append(sshArgs, extraOpts...)
 	sshArgs = append(sshArgs, cfg.RemoteHost, remoteCmd)
 
