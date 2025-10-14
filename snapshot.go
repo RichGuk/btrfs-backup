@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// latestSnapshot returns the path to the most recent snapshot in snapDir, or an empty string if none exist.
 func latestSnapshot(snapDir string) (string, error) {
 	entries, err := os.ReadDir(snapDir)
 	if err != nil || len(entries) == 0 {
@@ -132,4 +133,45 @@ func moveTmpFile(cfg *Config, outfile string) error {
 	sshCmd.Stderr = os.Stderr
 
 	return sshCmd.Run()
+}
+
+func targetMissingFullbackup(cfg *Config, vol *Volume) bool {
+	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("ls %s/%s-*.full.btrfs", cfg.RemoteDest, vol.Name))...)
+
+	missingFullBackup := false
+
+	output, err := lsCmd.Output()
+	if err != nil {
+		missingFullBackup = true
+	} else {
+
+		missingFullBackup = len(output) == 0
+	}
+
+	if verbose && missingFullBackup {
+		fmt.Print("⚠️ Remote target missing full backup\n")
+	}
+
+	return missingFullBackup
+}
+
+func remoteMissingGap(cfg *Config, vol *Volume, oldSnap string) bool {
+	// Check if remote has a backup from the same date as oldSnap
+	datePart := filepath.Base(oldSnap)[len("btrfs-backup-") : len("btrfs-backup-2006-01-02")]
+	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("ls %s/%s-%s.*.btrfs", cfg.RemoteDest, vol.Name, datePart))...)
+
+	missingGap := false
+
+	output, err := lsCmd.Output()
+	if err != nil {
+		missingGap = true
+	} else {
+		missingGap = len(output) == 0
+	}
+
+	if verbose && missingGap {
+		fmt.Printf("⚠️ Remote target missing backup for base snapshot date %s\n", datePart)
+	}
+	
+	return missingGap
 }

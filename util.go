@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"time"
 )
 
@@ -17,11 +19,20 @@ func checkBtrfsAccess(vol *Volume) error {
 }
 
 func snapshotAge(snapPath string) int {
-	fi, err := os.Stat(snapPath)
-	if err != nil {
+	base := filepath.Base(snapPath)
+	re := regexp.MustCompile(`(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})`)
+	match := re.FindStringSubmatch(base)
+
+	if len(match) < 2 {
 		return 999
 	}
-	return int(time.Since(fi.ModTime()).Hours() / 24)
+
+	t, err := time.Parse("2006-01-02_15-04-05", match[1])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: cannot parse snapshot name %s: %v\n", base, err)
+		return 999
+	}
+	return int(time.Since(t).Hours() / 24)
 }
 
 func buildSSHArgs(cfg *Config, remoteCmd string, extraOpts ...string) []string {
@@ -34,4 +45,11 @@ func buildSSHArgs(cfg *Config, remoteCmd string, extraOpts ...string) []string {
 	sshArgs = append(sshArgs, cfg.RemoteHost, remoteCmd)
 
 	return sshArgs
+}
+
+func needsFullBackup(cfg *Config, vol *Volume, oldSnap string) bool {
+	return oldSnap == "" ||
+		snapshotAge(oldSnap) > cfg.MaxAgeDays ||
+		targetMissingFullbackup(cfg, vol) ||
+		remoteMissingGap(cfg, vol, oldSnap)
 }

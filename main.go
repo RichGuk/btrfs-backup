@@ -43,14 +43,13 @@ func main() {
 		}
 
 		oldSnap, _ := latestSnapshot(vol.SnapDir)
-		newSnap, err := createSnapshot(vol.Src, vol.SnapDir, currentTime)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating snapshot: %v\n", err)
-			os.Exit(1)
+
+		if oldSnap != "" && verbose {
+			fmt.Printf("→ Found previous snapshot: %s (age %d days)\n", oldSnap, snapshotAge(oldSnap))
 		}
 
 		fullSnapshot := false
-		if oldSnap == "" || snapshotAge(oldSnap) > cfg.MaxAgeDays {
+		if needsFullBackup(cfg, &vol, oldSnap) {
 			fullSnapshot = true
 			if verbose {
 				fmt.Printf("→ Doing full backup for %s\n", vol.Name)
@@ -59,11 +58,17 @@ func main() {
 			fmt.Printf("→ Doing incremental backup for %s (base age %d days)\n", vol.Name, snapshotAge(oldSnap))
 		}
 
+		newSnap, err := createSnapshot(vol.Src, vol.SnapDir, currentTime)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating snapshot: %v\n", err)
+			os.Exit(1)
+		}
+
 		suffix := "inc"
 		if fullSnapshot {
 			suffix = "full"
 		}
-		outfile := fmt.Sprintf("%s-%s.%s.btrfs", vol.Name, currentTime.Format("2006-01-02"), suffix)
+		outfile := fmt.Sprintf("%s-%s.%s.btrfs", vol.Name, currentTime.Format("2006-01-02_15-04-05"), suffix)
 
 		if err := sendSnapshot(cfg, newSnap, oldSnap, outfile, fullSnapshot); err != nil {
 			fmt.Fprintf(os.Stderr, "Error sending snapshot: %v\n", err)
@@ -84,7 +89,7 @@ func main() {
 		}
 
 		if verbose || dryRun {
-			fmt.Print("\n")
+			fmt.Print("\n\n")
 		}
 	}
 }
