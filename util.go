@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+func remoteFileSuffix(cfg *Config) string {
+	if cfg.EncryptionKey != "" {
+		return ".btrfs.age"
+	}
+	return ".btrfs"
+}
+
 func checkBtrfsAccess(vol *Volume) error {
 	cmd := exec.Command("btrfs", "subvolume", "list", vol.Src)
 

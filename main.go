@@ -64,7 +64,7 @@ func main() {
 		if fullSnapshot {
 			suffix = "full"
 		}
-		outfile := fmt.Sprintf("%s-%s.%s.btrfs", vol.Name, currentTime.Format("2006-01-02_15-04-05"), suffix)
+		outfile := fmt.Sprintf("%s-%s.%s%s", vol.Name, currentTime.Format("2006-01-02_15-04-05"), suffix, remoteFileSuffix(cfg))
 
 		if remoteBackupExists(cfg, outfile) {
 			color.Red("⚠️ Backup file %s already exists on remote, skipping volume %s\n", outfile, vol.Name)

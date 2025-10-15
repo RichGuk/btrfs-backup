@@ -2,6 +2,7 @@ ssh_key: /root/.ssh/id_ed25519
 remote_host: backup@somehost.com
 remote_dest: /data/Backups
 max_age_days: 7
+# encryption_key: age1examplekeyvalue
 
 volumes:
   - name: root

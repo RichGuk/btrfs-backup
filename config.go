@@ -1,8 +1,10 @@
 package main
 
 import (
-	"gopkg.in/yaml.v3"
 	"os"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Volume struct {
@@ -12,11 +14,12 @@ type Volume struct {
 }
 
 type Config struct {
-	SSHKey     string   `yaml:"ssh_key"`
-	RemoteHost string   `yaml:"remote_host"`
-	RemoteDest string   `yaml:"remote_dest"`
-	MaxAgeDays int      `yaml:"max_age_days"`
-	Volumes    []Volume `yaml:"volumes"`
+	SSHKey        string   `yaml:"ssh_key"`
+	RemoteHost    string   `yaml:"remote_host"`
+	RemoteDest    string   `yaml:"remote_dest"`
+	MaxAgeDays    int      `yaml:"max_age_days"`
+	EncryptionKey string   `yaml:"encryption_key"`
+	Volumes       []Volume `yaml:"volumes"`
 }
 
 func loadConfig(path string) (*Config, error) {
@@ -33,5 +36,6 @@ func loadConfig(path string) (*Config, error) {
 	if cfg.MaxAgeDays == 0 {
 		cfg.MaxAgeDays = 7
 	}
+	cfg.EncryptionKey = strings.TrimSpace(cfg.EncryptionKey)
 	return &cfg, nil
 }

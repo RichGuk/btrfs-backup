@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -63,8 +64,20 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) erro
 	}
 
 	if dryRun {
-		cmdLine := fmt.Sprintf("btrfs %s | ssh %s", strings.Join(sendArgs, " "), strings.Join(sshArgs, " "))
-		fmt.Printf("[DRY-RUN] %s\n", cmdLine)
+		var builder strings.Builder
+		builder.WriteString(fmt.Sprintf("btrfs %s", strings.Join(sendArgs, " ")))
+		if cfg.EncryptionKey != "" {
+			builder.WriteString(" | age -r ")
+			builder.WriteString(cfg.EncryptionKey)
+		}
+		builder.WriteString(" | ssh ")
+		builder.WriteString(strings.Join(sshArgs, " "))
+
+		if cfg.EncryptionKey != "" {
+			builder.WriteString(" [with encryption]")
+		}
+
+		fmt.Printf("[DRY-RUN] %s\n", builder.String())
 
 		return nil
 	}
@@ -81,13 +94,39 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) erro
 	if err != nil {
 		return err
 	}
-	sshCmd.Stdin = pipe
+
+	var encryptCmd *exec.Cmd
+	var stream io.Reader = pipe
+
+	fmt.Println("Has Encryption Key:", cfg.EncryptionKey != "")
+
+	if cfg.EncryptionKey != "" {
+		encryptCmd = exec.Command("age", "-r", cfg.EncryptionKey)
+		encryptCmd.Stdin = stream
+		outPipe, err := encryptCmd.StdoutPipe()
+		if err != nil {
+			return err
+		}
+		stream = outPipe
+	}
+
+	sshCmd.Stdin = stream
 
 	if err := sendCmd.Start(); err != nil {
 		return err
 	}
 
+	if encryptCmd != nil {
+		if err := encryptCmd.Start(); err != nil {
+			_ = sendCmd.Wait()
+			return fmt.Errorf("age error: %v", err)
+		}
+	}
+
 	if err := sshCmd.Run(); err != nil {
+		if encryptCmd != nil {
+			_ = encryptCmd.Wait()
+		}
 		_ = sendCmd.Wait()
 
 		cleanupCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("rm -f %s", shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))))...)
@@ -98,6 +137,12 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) erro
 
 	if err := sendCmd.Wait(); err != nil {
 		return fmt.Errorf("btrfs send error: %v", err)
+	}
+
+	if encryptCmd != nil {
+		if err := encryptCmd.Wait(); err != nil {
+			return fmt.Errorf("age error: %v", err)
+		}
 	}
 	return nil
 }
@@ -140,7 +185,7 @@ func moveTmpFile(cfg *Config, outfile string) error {
 
 func targetMissingFullbackup(cfg *Config, vol *Volume) bool {
 	remoteBase := filepath.Join(cfg.RemoteDest, vol.Name)
-	pattern := shellEscape(remoteBase) + "-*.full.btrfs"
+	pattern := shellEscape(remoteBase) + "-*.full" + remoteFileSuffix(cfg)
 	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("ls %s", pattern))...)
 
 	missingFullBackup := false
@@ -173,9 +218,9 @@ func remoteMissingGap(cfg *Config, vol *Volume, oldSnap string) bool {
 
 	datePart := strings.TrimPrefix(base, prefix)
 
-	// Check if remote has a matching .btrfs file for this timestamp
+	// Check if remote has a matching backup file for this timestamp
 	remoteBase := filepath.Join(cfg.RemoteDest, vol.Name)
-	pattern := shellEscape(remoteBase) + fmt.Sprintf("-%s.*.btrfs", datePart)
+	pattern := shellEscape(remoteBase) + fmt.Sprintf("-%s.*%s", datePart, remoteFileSuffix(cfg))
 	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("ls %s 2>/dev/null", pattern))...)
 
 	output, err := lsCmd.Output()
