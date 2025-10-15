@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -45,6 +46,14 @@ func buildSSHArgs(cfg *Config, remoteCmd string, extraOpts ...string) []string {
 	sshArgs = append(sshArgs, cfg.RemoteHost, remoteCmd)
 
 	return sshArgs
+}
+
+func shellEscape(s string) string {
+	if s == "" {
+		return "''"
+	}
+
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func needsFullBackup(cfg *Config, vol *Volume, oldSnap string) bool {

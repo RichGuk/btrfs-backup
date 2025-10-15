@@ -58,17 +58,26 @@ func main() {
 			fmt.Printf("→ Doing incremental backup for %s (base age %d days)\n", vol.Name, snapshotAge(oldSnap))
 		}
 
-		newSnap, err := createSnapshot(vol.Src, vol.SnapDir, currentTime)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating snapshot: %v\n", err)
-			os.Exit(1)
-		}
-
 		suffix := "inc"
 		if fullSnapshot {
 			suffix = "full"
 		}
 		outfile := fmt.Sprintf("%s-%s.%s.btrfs", vol.Name, currentTime.Format("2006-01-02_15-04-05"), suffix)
+
+		if remoteBackupExists(cfg, outfile) {
+			fmt.Printf("⚠️ Backup file %s already exists on remote, skipping volume %s\n", outfile, vol.Name)
+
+			if verbose || dryRun {
+				fmt.Print("\n\n")
+			}
+			continue
+		}
+
+		newSnap, err := createSnapshot(vol.Src, vol.SnapDir, currentTime)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating snapshot: %v\n", err)
+			os.Exit(1)
+		}
 
 		if err := sendSnapshot(cfg, newSnap, oldSnap, outfile, fullSnapshot); err != nil {
 			fmt.Fprintf(os.Stderr, "Error sending snapshot: %v\n", err)

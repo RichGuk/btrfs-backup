@@ -52,7 +52,7 @@ func createSnapshot(src, snapDir string, currentTime time.Time) (string, error) 
 func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) error {
 	tmpFile := outfile + ".tmp"
 
-	sshArgs := buildSSHArgs(cfg, fmt.Sprintf("cat > %s", filepath.Join(cfg.RemoteDest, tmpFile)))
+	sshArgs := buildSSHArgs(cfg, fmt.Sprintf("cat > %s", shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))))
 
 	var sendArgs []string
 	if full {
@@ -89,7 +89,7 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) erro
 	if err := sshCmd.Run(); err != nil {
 		_ = sendCmd.Wait()
 
-		cleanupCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("rm -f %s", filepath.Join(cfg.RemoteDest, tmpFile)))...)
+		cleanupCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("rm -f %s", shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))))...)
 		_ = cleanupCmd.Run()
 
 		return fmt.Errorf("ssh error: %v", err)
@@ -117,7 +117,11 @@ func deleteOldSnapshot(snapshot string) {
 
 func moveTmpFile(cfg *Config, outfile string) error {
 	tmpFile := outfile + ".tmp"
-	remoteCmd := fmt.Sprintf("mv %s %s", filepath.Join(cfg.RemoteDest, tmpFile), filepath.Join(cfg.RemoteDest, outfile))
+	remoteCmd := fmt.Sprintf(
+		"mv %s %s",
+		shellEscape(filepath.Join(cfg.RemoteDest, tmpFile)),
+		shellEscape(filepath.Join(cfg.RemoteDest, outfile)),
+	)
 
 	if verbose {
 		fmt.Printf("Finalizing remote file: %s\n", remoteCmd)
@@ -136,7 +140,9 @@ func moveTmpFile(cfg *Config, outfile string) error {
 }
 
 func targetMissingFullbackup(cfg *Config, vol *Volume) bool {
-	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("ls %s/%s-*.full.btrfs", cfg.RemoteDest, vol.Name))...)
+	remoteBase := filepath.Join(cfg.RemoteDest, vol.Name)
+	pattern := shellEscape(remoteBase) + "-*.full.btrfs"
+	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("ls %s", pattern))...)
 
 	missingFullBackup := false
 
@@ -169,7 +175,8 @@ func remoteMissingGap(cfg *Config, vol *Volume, oldSnap string) bool {
 	datePart := strings.TrimPrefix(base, prefix)
 
 	// Check if remote has a matching .btrfs file for this timestamp
-	pattern := fmt.Sprintf("%s/%s-%s.*.btrfs", cfg.RemoteDest, vol.Name, datePart)
+	remoteBase := filepath.Join(cfg.RemoteDest, vol.Name)
+	pattern := shellEscape(remoteBase) + fmt.Sprintf("-%s.*.btrfs", datePart)
 	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("ls %s 2>/dev/null", pattern))...)
 
 	output, err := lsCmd.Output()
@@ -180,4 +187,12 @@ func remoteMissingGap(cfg *Config, vol *Volume, oldSnap string) bool {
 	}
 
 	return missingGap
+}
+
+func remoteBackupExists(cfg *Config, outfile string) bool {
+	remotePath := shellEscape(filepath.Join(cfg.RemoteDest, outfile))
+	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("test -f %s && echo exists", remotePath))...)
+
+	output, err := lsCmd.Output()
+	return err == nil && strings.TrimSpace(string(output)) == "exists"
 }
