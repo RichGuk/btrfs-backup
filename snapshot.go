@@ -156,22 +156,28 @@ func targetMissingFullbackup(cfg *Config, vol *Volume) bool {
 }
 
 func remoteMissingGap(cfg *Config, vol *Volume, oldSnap string) bool {
-	// Check if remote has a backup from the same date as oldSnap
-	datePart := filepath.Base(oldSnap)[len("btrfs-backup-") : len("btrfs-backup-2006-01-02")]
-	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("ls %s/%s-%s.*.btrfs", cfg.RemoteDest, vol.Name, datePart))...)
+	base := filepath.Base(oldSnap)
 
-	missingGap := false
+	const prefix = "btrfs-backup-"
+	if !strings.HasPrefix(base, prefix) {
+		if verbose {
+			fmt.Printf("⚠️ Snapshot name %s does not follow expected pattern\n", base)
+		}
+		return true
+	}
+
+	datePart := strings.TrimPrefix(base, prefix)
+
+	// Check if remote has a matching .btrfs file for this timestamp
+	pattern := fmt.Sprintf("%s/%s-%s.*.btrfs", cfg.RemoteDest, vol.Name, datePart)
+	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("ls %s 2>/dev/null", pattern))...)
 
 	output, err := lsCmd.Output()
-	if err != nil {
-		missingGap = true
-	} else {
-		missingGap = len(output) == 0
-	}
+	missingGap := err != nil || len(output) == 0
 
 	if verbose && missingGap {
-		fmt.Printf("⚠️ Remote target missing backup for base snapshot date %s\n", datePart)
+		fmt.Printf("⚠️ Remote target missing backup for snapshot timestamp %s\n", datePart)
 	}
-	
+
 	return missingGap
 }
