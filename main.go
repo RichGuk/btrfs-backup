@@ -23,7 +23,7 @@ func main() {
 
 	cfg, err := loadConfig(configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		errLog.Printf("Error loading config: %v", err)
 		os.Exit(1)
 	}
 
@@ -32,8 +32,8 @@ func main() {
 	for _, vol := range cfg.Volumes {
 		if !dryRun {
 			if err := checkBtrfsAccess(&vol); err != nil {
-				fmt.Fprintf(os.Stderr, "Error accessing btrfs subvolume: %v\n", err)
-				fmt.Println("Make sure the source path is a valid btrfs subvolume and that you have the necessary permissions.")
+				errLog.Printf("Error accessing btrfs subvolume: %v", err)
+				errLog.Println("Make sure the source path is a valid btrfs subvolume and that you have the necessary permissions.")
 				os.Exit(1)
 			}
 		}
@@ -77,17 +77,17 @@ func main() {
 
 		newSnap, err := createSnapshot(vol.Src, vol.SnapDir, currentTime)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating snapshot: %v\n", err)
+			errLog.Printf("Error creating snapshot: %v", err)
 			os.Exit(1)
 		}
 
 		if err := sendSnapshot(cfg, newSnap, oldSnap, outfile, fullSnapshot); err != nil {
-			fmt.Fprintf(os.Stderr, "Error sending snapshot: %v\n", err)
+			errLog.Printf("Error sending snapshot: %v", err)
 			os.Exit(1)
 		}
 
 		if err := moveTmpFile(cfg, outfile); err != nil {
-			fmt.Fprintf(os.Stderr, "Error finalizing remote file: %v\n", err)
+			errLog.Printf("Error finalizing remote file: %v", err)
 			os.Exit(1)
 		}
 

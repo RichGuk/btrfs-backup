@@ -105,7 +105,6 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) erro
 func deleteOldSnapshot(snapshot string) {
 	delCmd := exec.Command("btrfs", "subvolume", "delete", snapshot)
 
-
 	if verbose {
 		fmt.Printf("→ Deleting old local snapshot: %s\n", snapshot)
 	}
@@ -114,7 +113,7 @@ func deleteOldSnapshot(snapshot string) {
 		fmt.Printf("[DRY-RUN] %s\n", strings.Join(delCmd.Args, " "))
 	} else {
 		if err := delCmd.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error deleting old snapshot: %v\n", err)
+			errLog.Printf("Error deleting old snapshot: %v", err)
 		}
 	}
 }
@@ -155,7 +154,7 @@ func targetMissingFullbackup(cfg *Config, vol *Volume) bool {
 	}
 
 	if verbose && missingFullBackup {
-		fmt.Print("⚠️ Remote target missing full backup\n")
+		errLog.Println("⚠️ Remote target missing full backup")
 	}
 
 	return missingFullBackup
@@ -167,7 +166,7 @@ func remoteMissingGap(cfg *Config, vol *Volume, oldSnap string) bool {
 	const prefix = "btrfs-backup-"
 	if !strings.HasPrefix(base, prefix) {
 		if verbose {
-			fmt.Printf("⚠️ Snapshot name %s does not follow expected pattern\n", base)
+			errLog.Printf("⚠️ Snapshot name %s does not follow expected pattern", base)
 		}
 		return true
 	}
@@ -183,7 +182,7 @@ func remoteMissingGap(cfg *Config, vol *Volume, oldSnap string) bool {
 	missingGap := err != nil || len(output) == 0
 
 	if verbose && missingGap {
-		fmt.Printf("⚠️ Remote target missing backup for snapshot timestamp %s\n", datePart)
+		errLog.Printf("⚠️ Remote target missing backup for snapshot timestamp %s", datePart)
 	}
 
 	return missingGap

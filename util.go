@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -30,7 +29,7 @@ func snapshotAge(snapPath string) int {
 
 	t, err := time.Parse("2006-01-02_15-04-05", match[1])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: cannot parse snapshot name %s: %v\n", base, err)
+		errLog.Printf("Warning: cannot parse snapshot name %s: %v", base, err)
 		return 999
 	}
 	return int(time.Since(t).Hours() / 24)
