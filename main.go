@@ -81,14 +81,19 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err := sendSnapshot(cfg, newSnap, oldSnap, outfile, fullSnapshot); err != nil {
+		checksum, err := sendSnapshot(cfg, newSnap, oldSnap, outfile, fullSnapshot)
+		if err != nil {
 			errLog.Printf("Error sending snapshot: %v", err)
 			os.Exit(1)
 		}
 
-		if err := moveTmpFile(cfg, outfile); err != nil {
+		if err := moveTmpFile(cfg, outfile, checksum); err != nil {
 			errLog.Printf("Error finalizing remote file: %v", err)
 			os.Exit(1)
+		}
+
+		if verbose && checksum != "" {
+			fmt.Printf("→ SHA256: %s\n", checksum)
 		}
 
 		if oldSnap != "" && oldSnap != newSnap {

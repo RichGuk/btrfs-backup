@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -46,7 +47,7 @@ func createSnapshot(src, snapDir string, currentTime time.Time) (string, error) 
 	return path, createCmd.Run()
 }
 
-func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) error {
+func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (string, error) {
 	tmpFile := outfile + ".tmp"
 
 	sshArgs := buildSSHArgs(cfg, fmt.Sprintf("cat > %s", shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))))
@@ -59,7 +60,6 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) erro
 	}
 
 	if verbose {
-		// fmt.Printf("→ Sending snapshot: btrfs %s | ssh %s\n", strings.Join(sendArgs, " "), strings.Join(sshArgs, " "))
 		fmt.Printf("→ Sending snapshot %s → %s:%s\n", newSnap, cfg.RemoteHost, filepath.Join(cfg.RemoteDest, outfile))
 	}
 
@@ -79,7 +79,7 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) erro
 
 		fmt.Printf("[DRY-RUN] %s\n", builder.String())
 
-		return nil
+		return "", nil
 	}
 
 	sendCmd := exec.Command("btrfs", sendArgs...)
@@ -92,7 +92,7 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) erro
 
 	pipe, err := sendCmd.StdoutPipe()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	var encryptCmd *exec.Cmd
@@ -105,21 +105,22 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) erro
 		encryptCmd.Stdin = stream
 		outPipe, err := encryptCmd.StdoutPipe()
 		if err != nil {
-			return err
+			return "", err
 		}
 		stream = outPipe
 	}
 
-	sshCmd.Stdin = stream
+	hasher := sha256.New()
+	sshCmd.Stdin = io.TeeReader(stream, hasher)
 
 	if err := sendCmd.Start(); err != nil {
-		return err
+		return "", err
 	}
 
 	if encryptCmd != nil {
 		if err := encryptCmd.Start(); err != nil {
 			_ = sendCmd.Wait()
-			return fmt.Errorf("age error: %v", err)
+			return "", fmt.Errorf("age error: %v", err)
 		}
 	}
 
@@ -132,19 +133,20 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) erro
 		cleanupCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("rm -f %s", shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))))...)
 		_ = cleanupCmd.Run()
 
-		return fmt.Errorf("ssh error: %v", err)
+		return "", fmt.Errorf("ssh error: %v", err)
 	}
 
 	if err := sendCmd.Wait(); err != nil {
-		return fmt.Errorf("btrfs send error: %v", err)
+		return "", fmt.Errorf("btrfs send error: %v", err)
 	}
 
 	if encryptCmd != nil {
 		if err := encryptCmd.Wait(); err != nil {
-			return fmt.Errorf("age error: %v", err)
+			return "", fmt.Errorf("age error: %v", err)
 		}
 	}
-	return nil
+
+	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
 }
 
 func deleteOldSnapshot(snapshot string) {
@@ -163,7 +165,7 @@ func deleteOldSnapshot(snapshot string) {
 	}
 }
 
-func moveTmpFile(cfg *Config, outfile string) error {
+func moveTmpFile(cfg *Config, outfile, checksum string) error {
 	tmpFile := outfile + ".tmp"
 	remoteCmd := fmt.Sprintf(
 		"mv %s %s",
@@ -173,14 +175,44 @@ func moveTmpFile(cfg *Config, outfile string) error {
 
 	if dryRun {
 		fmt.Printf("[DRY-RUN] ssh %s\n", strings.Join(buildSSHArgs(cfg, remoteCmd), " "))
+	} else {
+		sshCmd := exec.Command("ssh", buildSSHArgs(cfg, remoteCmd)...)
+		sshCmd.Stdout = os.Stdout
+		sshCmd.Stderr = os.Stderr
+
+		if err := sshCmd.Run(); err != nil {
+			return err
+		}
+	}
+
+	if checksum == "" && !dryRun {
 		return nil
 	}
 
-	sshCmd := exec.Command("ssh", buildSSHArgs(cfg, remoteCmd)...)
-	sshCmd.Stdout = os.Stdout
-	sshCmd.Stderr = os.Stderr
+	checksumValue := checksum
+	if checksumValue == "" {
+		checksumValue = "<calculated-sha256>"
+	}
 
-	return sshCmd.Run()
+	checksumFinal := filepath.Join(cfg.RemoteDest, outfile+".sha256")
+
+	checksumCmd := fmt.Sprintf(
+		"printf '%%s  %%s\\n' %s %s > %s",
+		shellEscape(checksumValue),
+		shellEscape(outfile),
+		shellEscape(checksumFinal),
+	)
+
+	if dryRun {
+		fmt.Printf("[DRY-RUN] ssh %s\n", strings.Join(buildSSHArgs(cfg, checksumCmd), " "))
+		return nil
+	}
+
+	sshChecksumCmd := exec.Command("ssh", buildSSHArgs(cfg, checksumCmd)...)
+	sshChecksumCmd.Stdout = os.Stdout
+	sshChecksumCmd.Stderr = os.Stderr
+
+	return sshChecksumCmd.Run()
 }
 
 func targetMissingFullbackup(cfg *Config, vol *Volume) bool {
