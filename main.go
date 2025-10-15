@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/fatih/color"
 )
 
 var (
@@ -39,7 +41,7 @@ func main() {
 
 	for _, vol := range cfg.Volumes {
 		if verbose {
-			fmt.Printf("Processing volume: %s (src: %s, snapdir: %s)\n", vol.Name, vol.Src, vol.SnapDir)
+			fmt.Printf(color.YellowString("Processing volume: %s (src: %s, snapdir: %s)\n"), vol.Name, vol.Src, vol.SnapDir)
 		}
 
 		oldSnap, _ := latestSnapshot(vol.SnapDir)
@@ -55,7 +57,7 @@ func main() {
 				fmt.Printf("→ Doing full backup for %s\n", vol.Name)
 			}
 		} else if verbose {
-			fmt.Printf("→ Doing incremental backup for %s (base age %d days)\n", vol.Name, snapshotAge(oldSnap))
+			fmt.Printf("→ Doing incremental backup for %s\n", vol.Name)
 		}
 
 		suffix := "inc"
@@ -65,7 +67,7 @@ func main() {
 		outfile := fmt.Sprintf("%s-%s.%s.btrfs", vol.Name, currentTime.Format("2006-01-02_15-04-05"), suffix)
 
 		if remoteBackupExists(cfg, outfile) {
-			fmt.Printf("⚠️ Backup file %s already exists on remote, skipping volume %s\n", outfile, vol.Name)
+			color.Red("⚠️ Backup file %s already exists on remote, skipping volume %s\n", outfile, vol.Name)
 
 			if verbose || dryRun {
 				fmt.Print("\n\n")
@@ -94,7 +96,7 @@ func main() {
 		}
 
 		if verbose {
-			fmt.Printf("Backup completed for volume: %s", vol.Name)
+			fmt.Printf(color.GreenString("Finished processing: %s"), vol.Name)
 		}
 
 		if verbose || dryRun {

@@ -37,10 +37,6 @@ func createSnapshot(src, snapDir string, currentTime time.Time) (string, error) 
 
 	createCmd := exec.Command("btrfs", "subvolume", "snapshot", "-r", src, path)
 
-	if verbose {
-		fmt.Printf("Creating snapshot: %s -> %s\n", src, path)
-	}
-
 	if dryRun {
 		fmt.Printf("[DRY-RUN] %s\n", strings.Join(createCmd.Args, " "))
 		return path, nil
@@ -61,6 +57,11 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) erro
 		sendArgs = []string{"send", "-p", oldSnap, newSnap}
 	}
 
+	if verbose {
+		// fmt.Printf("→ Sending snapshot: btrfs %s | ssh %s\n", strings.Join(sendArgs, " "), strings.Join(sshArgs, " "))
+		fmt.Printf("→ Sending snapshot %s → %s:%s\n", newSnap, cfg.RemoteHost, filepath.Join(cfg.RemoteDest, outfile))
+	}
+
 	if dryRun {
 		cmdLine := fmt.Sprintf("btrfs %s | ssh %s", strings.Join(sendArgs, " "), strings.Join(sshArgs, " "))
 		fmt.Printf("[DRY-RUN] %s\n", cmdLine)
@@ -71,16 +72,16 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) erro
 	sendCmd := exec.Command("btrfs", sendArgs...)
 	sshCmd := exec.Command("ssh", sshArgs...)
 
+	if verbose {
+		sshCmd.Stdout = os.Stdout
+		sshCmd.Stderr = os.Stderr
+	}
+
 	pipe, err := sendCmd.StdoutPipe()
 	if err != nil {
 		return err
 	}
 	sshCmd.Stdin = pipe
-
-	if verbose {
-		fmt.Printf("Sending snapshot: btrfs %s | ssh %s\n", strings.Join(sendArgs, " "), strings.Join(sshArgs, " "))
-		sshCmd.Stdout = os.Stdout
-	}
 
 	if err := sendCmd.Start(); err != nil {
 		return err
@@ -103,12 +104,15 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) erro
 
 func deleteOldSnapshot(snapshot string) {
 	delCmd := exec.Command("btrfs", "subvolume", "delete", snapshot)
+
+
+	if verbose {
+		fmt.Printf("→ Deleting old local snapshot: %s\n", snapshot)
+	}
+
 	if dryRun {
 		fmt.Printf("[DRY-RUN] %s\n", strings.Join(delCmd.Args, " "))
 	} else {
-		if verbose {
-			fmt.Printf("Deleting old snapshot: %s\n", strings.Join(delCmd.Args, " "))
-		}
 		if err := delCmd.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error deleting old snapshot: %v\n", err)
 		}
@@ -122,10 +126,6 @@ func moveTmpFile(cfg *Config, outfile string) error {
 		shellEscape(filepath.Join(cfg.RemoteDest, tmpFile)),
 		shellEscape(filepath.Join(cfg.RemoteDest, outfile)),
 	)
-
-	if verbose {
-		fmt.Printf("Finalizing remote file: %s\n", remoteCmd)
-	}
 
 	if dryRun {
 		fmt.Printf("[DRY-RUN] ssh %s\n", strings.Join(buildSSHArgs(cfg, remoteCmd), " "))
