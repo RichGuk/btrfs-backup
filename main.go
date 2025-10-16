@@ -47,11 +47,11 @@ func main() {
 		oldSnap, _ := latestSnapshot(vol.SnapDir)
 
 		if oldSnap != "" && verbose {
-			fmt.Printf("→ Found previous snapshot: %s (age %d days)\n", oldSnap, snapshotAge(oldSnap))
+			fmt.Printf("→ Found previous snapshot: %s\n", oldSnap)
 		}
 
 		fullSnapshot := false
-		if needsFullBackup(cfg, &vol, oldSnap) {
+		if needsFullBackup(cfg, &vol, oldSnap, currentTime) {
 			fullSnapshot = true
 			if verbose {
 				fmt.Printf("→ Doing full backup for %s\n", vol.Name)

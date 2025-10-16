@@ -231,56 +231,6 @@ func validateRemoteChecksum(cfg *Config, outfile, checksum string) error {
 	return nil
 }
 
-func targetMissingFullbackup(cfg *Config, vol *Volume) bool {
-	remoteBase := filepath.Join(cfg.RemoteDest, vol.Name)
-	pattern := shellEscape(remoteBase) + "-*.full" + remoteFileSuffix(cfg)
-	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("ls %s", pattern))...)
-
-	missingFullBackup := false
-
-	output, err := lsCmd.Output()
-	if err != nil {
-		missingFullBackup = true
-	} else {
-
-		missingFullBackup = len(output) == 0
-	}
-
-	if verbose && missingFullBackup {
-		errLog.Println("⚠️ Remote target missing full backup")
-	}
-
-	return missingFullBackup
-}
-
-func remoteMissingGap(cfg *Config, vol *Volume, oldSnap string) bool {
-	base := filepath.Base(oldSnap)
-
-	const prefix = "btrfs-backup-"
-	if !strings.HasPrefix(base, prefix) {
-		if verbose {
-			errLog.Printf("⚠️ Snapshot name %s does not follow expected pattern", base)
-		}
-		return true
-	}
-
-	datePart := strings.TrimPrefix(base, prefix)
-
-	// Check if remote has a matching backup file for this timestamp
-	remoteBase := filepath.Join(cfg.RemoteDest, vol.Name)
-	pattern := shellEscape(remoteBase) + fmt.Sprintf("-%s.*%s", datePart, remoteFileSuffix(cfg))
-	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("ls %s 2>/dev/null", pattern))...)
-
-	output, err := lsCmd.Output()
-	missingGap := err != nil || len(output) == 0
-
-	if verbose && missingGap {
-		errLog.Printf("⚠️ Remote target missing backup for snapshot timestamp %s", datePart)
-	}
-
-	return missingGap
-}
-
 func remoteBackupExists(cfg *Config, outfile string) bool {
 	remotePath := shellEscape(filepath.Join(cfg.RemoteDest, outfile))
 	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("test -f %s && echo exists", remotePath))...)

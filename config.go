@@ -14,12 +14,13 @@ type Volume struct {
 }
 
 type Config struct {
-	SSHKey        string   `yaml:"ssh_key"`
-	RemoteHost    string   `yaml:"remote_host"`
-	RemoteDest    string   `yaml:"remote_dest"`
-	MaxAgeDays    int      `yaml:"max_age_days"`
-	EncryptionKey string   `yaml:"encryption_key"`
-	Volumes       []Volume `yaml:"volumes"`
+	SSHKey          string   `yaml:"ssh_key"`
+	RemoteHost      string   `yaml:"remote_host"`
+	RemoteDest      string   `yaml:"remote_dest"`
+	MaxAgeDays      int      `yaml:"max_age_days"`
+	MaxIncrementals int      `yaml:"max_incrementals"`
+	EncryptionKey   string   `yaml:"encryption_key"`
+	Volumes         []Volume `yaml:"volumes"`
 }
 
 func loadConfig(path string) (*Config, error) {
