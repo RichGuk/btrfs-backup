@@ -47,9 +47,29 @@ func createSnapshot(src, snapDir string, currentTime time.Time) (string, error) 
 	return path, createCmd.Run()
 }
 
-func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (string, error) {
+func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (checksum string, err error) {
+	ok := false
+
 	tmpFile := outfile + ".tmp"
 	sshArgs := buildSSHArgs(cfg, fmt.Sprintf("cat > %s", shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))))
+
+	defer func(success *bool) {
+		if *success || dryRun {
+			return
+		}
+
+		cleanupCmd := exec.Command(
+			"ssh",
+			buildSSHArgs(cfg, fmt.Sprintf("rm -f %s", shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))))...,
+		)
+
+		if err := cleanupCmd.Run(); err != nil {
+			errLog.Printf("Error during cleanup of remote temp file: %v", err)
+		} else if verbose {
+			fmt.Printf("→ Cleaned up remote temp file: %s\n", tmpFile)
+		}
+
+	}(&ok)
 
 	var sendArgs []string
 	if full {
@@ -101,13 +121,6 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (str
 	sshCmd := exec.Command("ssh", sshArgs...)
 	sshCmd.Stdin = io.TeeReader(stream, hasher)
 
-	defer func() {
-		_ = sendCmd.Wait()
-		if encryptCmd != nil {
-			_ = encryptCmd.Wait()
-		}
-	}()
-
 	if err := sendCmd.Start(); err != nil {
 		return "", fmt.Errorf("btrfs send start failed: %w", err)
 	}
@@ -118,10 +131,27 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (str
 	}
 
 	if err := sshCmd.Run(); err != nil {
-		_ = exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("rm -f %s", shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))))...).Run()
+		_ = sendCmd.Wait()
+		if encryptCmd != nil {
+			_ = encryptCmd.Wait()
+		}
 		return "", fmt.Errorf("ssh failed: %w", err)
 	}
 
+	sendErr := sendCmd.Wait()
+	var encryptErr error
+	if encryptCmd != nil {
+		encryptErr = encryptCmd.Wait()
+	}
+
+	if encryptErr != nil {
+		return "", fmt.Errorf("age failed: %w", encryptErr)
+	}
+	if sendErr != nil {
+		return "", fmt.Errorf("btrfs send failed: %w", sendErr)
+	}
+
+	ok = true
 	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
 }
 
