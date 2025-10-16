@@ -98,7 +98,9 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (str
 	var encryptCmd *exec.Cmd
 	var stream io.Reader = pipe
 
-	fmt.Println("Has Encryption Key:", cfg.EncryptionKey != "")
+	if verbose {
+		fmt.Printf("Has Encryption Key: %v\n", cfg.EncryptionKey != "")
+	}
 
 	if cfg.EncryptionKey != "" {
 		encryptCmd = exec.Command("age", "-r", cfg.EncryptionKey)
@@ -185,6 +187,23 @@ func moveTmpFile(cfg *Config, outfile, checksum string) error {
 		}
 	}
 
+	if !dryRun && checksum != "" {
+		if err := validateRemoteChecksum(cfg, outfile, checksum); err != nil {
+			errLog.Printf("Checksum validation failed for %s: %v", outfile, err)
+
+			// Best-effort cleanup so callers do not consider this a valid backup
+			cleanupCmd := exec.Command(
+				"ssh",
+				buildSSHArgs(cfg, fmt.Sprintf("rm -f %s", shellEscape(filepath.Join(cfg.RemoteDest, outfile))))...,
+			)
+			_ = cleanupCmd.Run()
+
+			return err
+		} else if verbose {
+			fmt.Printf("→ Checksum validation passed for %s\n", outfile)
+		}
+	}
+
 	if checksum == "" && !dryRun {
 		return nil
 	}
@@ -213,6 +232,29 @@ func moveTmpFile(cfg *Config, outfile, checksum string) error {
 	sshChecksumCmd.Stderr = os.Stderr
 
 	return sshChecksumCmd.Run()
+}
+
+func validateRemoteChecksum(cfg *Config, outfile, checksum string) error {
+	remotePath := filepath.Join(cfg.RemoteDest, outfile)
+	checksumCmd := fmt.Sprintf("sha256sum %s", shellEscape(remotePath))
+
+	sshChecksumCmd := exec.Command("ssh", buildSSHArgs(cfg, checksumCmd)...)
+	output, err := sshChecksumCmd.Output()
+	if err != nil {
+		return err
+	}
+
+	remoteChecksumFields := strings.Fields(strings.TrimSpace(string(output)))
+	if len(remoteChecksumFields) == 0 {
+		return fmt.Errorf("unable to parse remote checksum output: %q", string(output))
+	}
+
+	remoteChecksum := remoteChecksumFields[0]
+	if !strings.EqualFold(remoteChecksum, checksum) {
+		return fmt.Errorf("expected %s but remote reported %s", checksum, remoteChecksum)
+	}
+
+	return nil
 }
 
 func targetMissingFullbackup(cfg *Config, vol *Volume) bool {
