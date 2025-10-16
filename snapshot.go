@@ -49,7 +49,6 @@ func createSnapshot(src, snapDir string, currentTime time.Time) (string, error) 
 
 func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (string, error) {
 	tmpFile := outfile + ".tmp"
-
 	sshArgs := buildSSHArgs(cfg, fmt.Sprintf("cat > %s", shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))))
 
 	var sendArgs []string
@@ -60,48 +59,34 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (str
 	}
 
 	if verbose {
-		fmt.Printf("→ Sending snapshot %s → %s:%s\n", newSnap, cfg.RemoteHost, filepath.Join(cfg.RemoteDest, outfile))
+		fmt.Printf(
+			"→ [%s] Sending snapshot %s → %s:%s\n",
+			map[bool]string{true: "age encrypt", false: "plain"}[cfg.EncryptionKey != ""],
+			newSnap,
+			cfg.RemoteHost,
+			filepath.Join(cfg.RemoteDest, outfile),
+		)
 	}
 
 	if dryRun {
 		var builder strings.Builder
 		builder.WriteString(fmt.Sprintf("btrfs %s", strings.Join(sendArgs, " ")))
 		if cfg.EncryptionKey != "" {
-			builder.WriteString(" | age -r ")
-			builder.WriteString(cfg.EncryptionKey)
+			builder.WriteString(fmt.Sprintf(" | age -r %s", cfg.EncryptionKey))
 		}
-		builder.WriteString(" | ssh ")
-		builder.WriteString(strings.Join(sshArgs, " "))
-
-		if cfg.EncryptionKey != "" {
-			builder.WriteString(" [with encryption]")
-		}
-
+		builder.WriteString(fmt.Sprintf(" | ssh %s", strings.Join(sshArgs, " ")))
 		fmt.Printf("[DRY-RUN] %s\n", builder.String())
-
 		return "", nil
 	}
 
 	sendCmd := exec.Command("btrfs", sendArgs...)
-	sshCmd := exec.Command("ssh", sshArgs...)
-
-	if verbose {
-		sshCmd.Stdout = os.Stdout
-		sshCmd.Stderr = os.Stderr
-	}
-
-	pipe, err := sendCmd.StdoutPipe()
+	stdout, err := sendCmd.StdoutPipe()
 	if err != nil {
 		return "", err
 	}
 
+	var stream io.Reader = stdout
 	var encryptCmd *exec.Cmd
-	var stream io.Reader = pipe
-
-	if verbose {
-		fmt.Printf("Has Encryption Key: %v\n", cfg.EncryptionKey != "")
-	}
-
 	if cfg.EncryptionKey != "" {
 		encryptCmd = exec.Command("age", "-r", cfg.EncryptionKey)
 		encryptCmd.Stdin = stream
@@ -113,39 +98,28 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (str
 	}
 
 	hasher := sha256.New()
+	sshCmd := exec.Command("ssh", sshArgs...)
 	sshCmd.Stdin = io.TeeReader(stream, hasher)
 
-	if err := sendCmd.Start(); err != nil {
-		return "", err
-	}
+	defer func() {
+		_ = sendCmd.Wait()
+		if encryptCmd != nil {
+			_ = encryptCmd.Wait()
+		}
+	}()
 
+	if err := sendCmd.Start(); err != nil {
+		return "", fmt.Errorf("btrfs send start failed: %w", err)
+	}
 	if encryptCmd != nil {
 		if err := encryptCmd.Start(); err != nil {
-			_ = sendCmd.Wait()
-			return "", fmt.Errorf("age error: %v", err)
+			return "", fmt.Errorf("age start failed: %w", err)
 		}
 	}
 
 	if err := sshCmd.Run(); err != nil {
-		if encryptCmd != nil {
-			_ = encryptCmd.Wait()
-		}
-		_ = sendCmd.Wait()
-
-		cleanupCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("rm -f %s", shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))))...)
-		_ = cleanupCmd.Run()
-
-		return "", fmt.Errorf("ssh error: %v", err)
-	}
-
-	if err := sendCmd.Wait(); err != nil {
-		return "", fmt.Errorf("btrfs send error: %v", err)
-	}
-
-	if encryptCmd != nil {
-		if err := encryptCmd.Wait(); err != nil {
-			return "", fmt.Errorf("age error: %v", err)
-		}
+		_ = exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("rm -f %s", shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))))...).Run()
+		return "", fmt.Errorf("ssh failed: %w", err)
 	}
 
 	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
