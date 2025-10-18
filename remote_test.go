@@ -344,3 +344,117 @@ func TestSendSnapshotFailureCleansUpTempFile(t *testing.T) {
 		t.Fatalf("expected cleanup rm command in ssh log, got %q", string(sshLogData))
 	}
 }
+
+func TestSendSnapshotBtrfsSendStartFailure(t *testing.T) {
+	setupTestEnv(t)
+	withDryRun(t, false)
+
+	tempDir := t.TempDir()
+	remoteDir := filepath.Join(tempDir, "remote")
+	if err := os.MkdirAll(remoteDir, 0o755); err != nil {
+		t.Fatalf("creating remote dir: %v", err)
+	}
+
+	cfg := &Config{
+		RemoteHost: "remote",
+		RemoteDest: remoteDir,
+	}
+
+	newSnap := "/nonexistent/snapshot"
+	outfile := "volume-fail.btrfs"
+
+	_, err := sendSnapshot(cfg, newSnap, "", outfile, true)
+	if err == nil {
+		t.Fatal("expected sendSnapshot to fail due to btrfs send start failure")
+	}
+}
+
+func TestSendSnapshotBtrfsSendWaitFailure(t *testing.T) {
+	_, remoteDir := setupTestEnv(t)
+	withDryRun(t, false)
+
+	tempDir := t.TempDir()
+	t.Setenv("BTRFS_FAIL_SEND", "1")
+
+	newSnap := filepath.Join(tempDir, "snap-fail")
+	if err := os.WriteFile(newSnap, []byte("data"), 0o644); err != nil {
+		t.Fatalf("writing new snapshot: %v", err)
+	}
+
+	cfg := &Config{
+		RemoteHost: "remote",
+		RemoteDest: remoteDir,
+	}
+
+	outfile := "volume-fail.btrfs"
+	_, err := sendSnapshot(cfg, newSnap, "", outfile, true)
+	if err == nil {
+		t.Fatal("expected sendSnapshot to fail due to btrfs send wait failure")
+	}
+	if !strings.Contains(err.Error(), "btrfs send failed") {
+		t.Fatalf("expected 'btrfs send failed' error, got %v", err)
+	}
+}
+
+func TestSendSnapshotAgeStartFailure(t *testing.T) {
+	setupTestEnv(t)
+	withDryRun(t, false)
+
+	tempDir := t.TempDir()
+	remoteDir := filepath.Join(tempDir, "remote")
+	if err := os.MkdirAll(remoteDir, 0o755); err != nil {
+		t.Fatalf("creating remote dir: %v", err)
+	}
+
+	newSnap := filepath.Join(tempDir, "snap")
+	if err := os.WriteFile(newSnap, []byte("data"), 0o644); err != nil {
+		t.Fatalf("writing new snapshot: %v", err)
+	}
+
+	t.Setenv("PATH", "/nonexistent")
+
+	cfg := &Config{
+		RemoteHost:    "remote",
+		RemoteDest:    remoteDir,
+		EncryptionKey: "test-key",
+	}
+
+	t.Cleanup(func() {
+		errLog.SetOutput(os.Stderr)
+	})
+	errLog.SetOutput(os.NewFile(0, os.DevNull))
+
+	outfile := "volume-fail.btrfs.age"
+	_, err := sendSnapshot(cfg, newSnap, "", outfile, true)
+	if err == nil {
+		t.Fatal("expected sendSnapshot to fail due to age start failure")
+	}
+}
+
+func TestSendSnapshotAgeWaitFailure(t *testing.T) {
+	_, remoteDir := setupTestEnv(t)
+	withDryRun(t, false)
+
+	tempDir := t.TempDir()
+	t.Setenv("AGE_FAIL", "1")
+
+	newSnap := filepath.Join(tempDir, "snap")
+	if err := os.WriteFile(newSnap, []byte("data"), 0o644); err != nil {
+		t.Fatalf("writing new snapshot: %v", err)
+	}
+
+	cfg := &Config{
+		RemoteHost:    "remote",
+		RemoteDest:    remoteDir,
+		EncryptionKey: "test-key",
+	}
+
+	outfile := "volume-fail.btrfs.age"
+	_, err := sendSnapshot(cfg, newSnap, "", outfile, true)
+	if err == nil {
+		t.Fatal("expected sendSnapshot to fail due to age wait failure")
+	}
+	if !strings.Contains(err.Error(), "age failed") {
+		t.Fatalf("expected 'age failed' error, got %v", err)
+	}
+}

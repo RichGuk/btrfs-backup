@@ -59,6 +59,9 @@ log="${BTRFS_LOG:-}"
 case "$1" in
 send)
 	shift
+	if [ "${BTRFS_FAIL_SEND:-0}" -ne 0 ]; then
+		exit 1
+	fi
 	if [ "${1:-}" = "-p" ]; then
 		old="$2"
 		new="$3"
@@ -151,6 +154,10 @@ set -e
 log="${AGE_LOG:-}"
 if [ -n "$log" ]; then
 	printf "age %s\n" "$*" >> "$log"
+fi
+
+if [ "${AGE_FAIL:-0}" -ne 0 ]; then
+	exit 1
 fi
 
 if [ -n "${AGE_PREFIX:-}" ]; then
