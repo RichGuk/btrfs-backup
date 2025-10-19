@@ -1,2 +1,3 @@
 /btrfs-backup
 .gocache/
+coverage.out
