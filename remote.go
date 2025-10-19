@@ -368,3 +368,65 @@ func needsFullBackup(cfg *Config, vol *Volume, oldSnap string, currentTime time.
 
 	return false
 }
+func cleanupOldBackups(cfg *Config, vol *Volume) error {
+	backups, err := listRemoteBackups(cfg, vol)
+	if err != nil {
+		return fmt.Errorf("failed to list remote backups: %w", err)
+	}
+
+	if len(backups) < 2 {
+		return nil
+	}
+
+	fullBackups := []remoteBackup{}
+	for _, b := range backups {
+		if b.Kind == "full" {
+			fullBackups = append(fullBackups, b)
+		}
+	}
+
+	if len(fullBackups) < 2 {
+		return nil
+	}
+
+	secondToLastFull := fullBackups[len(fullBackups)-2]
+
+	var toDelete []remoteBackup
+	for _, b := range backups {
+		if b.Timestamp.Before(secondToLastFull.Timestamp) {
+			toDelete = append(toDelete, b)
+		}
+	}
+
+	if len(toDelete) == 0 {
+		return nil
+	}
+
+	if verbose {
+		fmt.Printf("→ Cleaning up %d old backup(s) for %s (keeping last 2 full chains)\n", len(toDelete), vol.Name)
+	}
+
+	var rmArgs []string
+	for _, b := range toDelete {
+		backupPath := shellEscape(filepath.Join(cfg.RemoteDest, b.Name))
+		checksumPath := shellEscape(filepath.Join(cfg.RemoteDest, b.Name+".sha256"))
+		rmArgs = append(rmArgs, backupPath, checksumPath)
+		if verbose {
+			fmt.Printf("→ Deleting: %s\n", b.Name)
+		}
+	}
+
+	remoteCmd := fmt.Sprintf("rm -f %s", strings.Join(rmArgs, " "))
+
+	if dryRun {
+		fmt.Printf("[DRY-RUN] ssh %s\n", strings.Join(buildSSHArgs(cfg, remoteCmd), " "))
+		return nil
+	}
+
+	sshCmd := exec.Command("ssh", buildSSHArgs(cfg, remoteCmd)...)
+	if err := sshCmd.Run(); err != nil {
+		return fmt.Errorf("failed to delete old backups: %w", err)
+	}
+
+	return nil
+}

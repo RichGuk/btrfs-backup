@@ -458,3 +458,113 @@ func TestSendSnapshotAgeWaitFailure(t *testing.T) {
 		t.Fatalf("expected 'age failed' error, got %v", err)
 	}
 }
+
+func TestCleanupOldBackups(t *testing.T) {
+	_, remoteDir := setupTestEnv(t)
+	withDryRun(t, false)
+
+	cfg := &Config{
+		RemoteHost: "remote",
+		RemoteDest: remoteDir,
+	}
+	vol := &Volume{Name: "root"}
+
+	createTestBackup := func(name string) {
+		path := filepath.Join(remoteDir, name)
+		if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+			t.Fatalf("creating test backup: %v", err)
+		}
+		checksumPath := path + ".sha256"
+		if err := os.WriteFile(checksumPath, []byte("abc123  "+name), 0o644); err != nil {
+			t.Fatalf("creating test checksum: %v", err)
+		}
+	}
+
+	createTestBackup("root-2024-01-01_10-00-00.full.btrfs")
+	createTestBackup("root-2024-01-02_10-00-00.inc.btrfs")
+	createTestBackup("root-2024-01-03_10-00-00.inc.btrfs")
+	createTestBackup("root-2024-01-04_10-00-00.full.btrfs")
+	createTestBackup("root-2024-01-05_10-00-00.inc.btrfs")
+	createTestBackup("root-2024-01-06_10-00-00.full.btrfs")
+
+	if err := cleanupOldBackups(cfg, vol); err != nil {
+		t.Fatalf("cleanupOldBackups: %v", err)
+	}
+
+	entries, err := os.ReadDir(remoteDir)
+	if err != nil {
+		t.Fatalf("reading remote dir: %v", err)
+	}
+
+	remaining := []string{}
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".sha256") {
+			remaining = append(remaining, e.Name())
+		}
+	}
+
+	expected := []string{
+		"root-2024-01-04_10-00-00.full.btrfs",
+		"root-2024-01-05_10-00-00.inc.btrfs",
+		"root-2024-01-06_10-00-00.full.btrfs",
+	}
+
+	if len(remaining) != len(expected) {
+		t.Fatalf("expected %d remaining backups, got %d: %v", len(expected), len(remaining), remaining)
+	}
+
+	for i, name := range expected {
+		if remaining[i] != name {
+			t.Errorf("expected remaining[%d] = %q, got %q", i, name, remaining[i])
+		}
+	}
+}
+
+func TestCleanupOldBackupsNoFullBackups(t *testing.T) {
+	_, remoteDir := setupTestEnv(t)
+	withDryRun(t, false)
+
+	cfg := &Config{
+		RemoteHost: "remote",
+		RemoteDest: remoteDir,
+	}
+	vol := &Volume{Name: "root"}
+
+	if err := cleanupOldBackups(cfg, vol); err != nil {
+		t.Fatalf("cleanupOldBackups on empty dir: %v", err)
+	}
+}
+
+func TestCleanupOldBackupsOnlyOneFull(t *testing.T) {
+	_, remoteDir := setupTestEnv(t)
+	withDryRun(t, false)
+
+	cfg := &Config{
+		RemoteHost: "remote",
+		RemoteDest: remoteDir,
+	}
+	vol := &Volume{Name: "root"}
+
+	createTestBackup := func(name string) {
+		path := filepath.Join(remoteDir, name)
+		if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+			t.Fatalf("creating test backup: %v", err)
+		}
+	}
+
+	createTestBackup("root-2024-01-01_10-00-00.full.btrfs")
+	createTestBackup("root-2024-01-02_10-00-00.inc.btrfs")
+
+	if err := cleanupOldBackups(cfg, vol); err != nil {
+		t.Fatalf("cleanupOldBackups: %v", err)
+	}
+
+	entries, err := os.ReadDir(remoteDir)
+	if err != nil {
+		t.Fatalf("reading remote dir: %v", err)
+	}
+
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 backups to remain (only 1 full), got %d", len(entries))
+	}
+}

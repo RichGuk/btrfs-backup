@@ -110,6 +110,12 @@ func main() {
 			fmt.Printf("→ SHA256: %s\n", checksum)
 		}
 
+		if fullSnapshot {
+			if err := cleanupOldBackups(cfg, &vol); err != nil {
+				errLog.Printf("Error cleaning up old backups: %v", err)
+			}
+		}
+
 		if oldSnap != "" && oldSnap != newSnap {
 			deleteOldSnapshot(oldSnap)
 		}
