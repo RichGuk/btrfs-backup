@@ -63,7 +63,6 @@ func TestLatestSnapshot(t *testing.T) {
 
 func TestCreateSnapshot(t *testing.T) {
 	setupTestEnv(t)
-	withDryRun(t, false)
 
 	logPath := filepath.Join(t.TempDir(), "btrfs.log")
 	t.Setenv("BTRFS_LOG", logPath)
@@ -106,7 +105,6 @@ func TestCreateSnapshot(t *testing.T) {
 
 func TestCreateSnapshotError(t *testing.T) {
 	setupTestEnv(t)
-	withDryRun(t, false)
 	t.Setenv("BTRFS_FAIL_SNAPSHOT", "1")
 
 	srcDir := filepath.Join(t.TempDir(), "src")
@@ -127,7 +125,6 @@ func TestCreateSnapshotError(t *testing.T) {
 
 func TestDeleteOldSnapshot(t *testing.T) {
 	setupTestEnv(t)
-	withDryRun(t, false)
 
 	logPath := filepath.Join(t.TempDir(), "btrfs.log")
 	t.Setenv("BTRFS_LOG", logPath)

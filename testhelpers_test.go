@@ -7,13 +7,6 @@ import (
 	"testing"
 )
 
-func withDryRun(t *testing.T, val bool) {
-	t.Helper()
-	prev := dryRun
-	dryRun = val
-	t.Cleanup(func() { dryRun = prev })
-}
-
 func setupTestEnv(t *testing.T) (binDir, remoteDir string) {
 	t.Helper()
 	binDir, remoteDir = setupTestBins(t)

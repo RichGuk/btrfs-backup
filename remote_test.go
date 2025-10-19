@@ -11,7 +11,6 @@ import (
 
 func TestMoveTmpFileRenamesWithoutChecksum(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
-	withDryRun(t, false)
 
 	cfg := &Config{
 		RemoteHost: "remote",
@@ -48,7 +47,6 @@ func TestMoveTmpFileRenamesWithoutChecksum(t *testing.T) {
 
 func TestMoveTmpFileWithChecksum(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
-	withDryRun(t, false)
 
 	cfg := &Config{
 		RemoteHost: "remote",
@@ -94,7 +92,6 @@ func TestMoveTmpFileWithChecksum(t *testing.T) {
 
 func TestMoveTmpFileChecksumMismatch(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
-	withDryRun(t, false)
 
 	cfg := &Config{
 		RemoteHost: "remote",
@@ -186,7 +183,6 @@ func TestRemoteBackupExists(t *testing.T) {
 
 func TestSendSnapshotFull(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
-	withDryRun(t, false)
 
 	btrfsLog := filepath.Join(t.TempDir(), "btrfs.log")
 	t.Setenv("BTRFS_LOG", btrfsLog)
@@ -233,7 +229,6 @@ func TestSendSnapshotFull(t *testing.T) {
 
 func TestSendSnapshotIncrementalWithEncryption(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
-	withDryRun(t, false)
 
 	tempDir := t.TempDir()
 	btrfsLog := filepath.Join(tempDir, "btrfs.log")
@@ -301,7 +296,6 @@ func TestSendSnapshotIncrementalWithEncryption(t *testing.T) {
 
 func TestSendSnapshotFailureCleansUpTempFile(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
-	withDryRun(t, false)
 
 	tempDir := t.TempDir()
 	btrfsLog := filepath.Join(tempDir, "btrfs.log")
@@ -347,7 +341,6 @@ func TestSendSnapshotFailureCleansUpTempFile(t *testing.T) {
 
 func TestSendSnapshotBtrfsSendStartFailure(t *testing.T) {
 	setupTestEnv(t)
-	withDryRun(t, false)
 
 	tempDir := t.TempDir()
 	remoteDir := filepath.Join(tempDir, "remote")
@@ -371,7 +364,6 @@ func TestSendSnapshotBtrfsSendStartFailure(t *testing.T) {
 
 func TestSendSnapshotBtrfsSendWaitFailure(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
-	withDryRun(t, false)
 
 	tempDir := t.TempDir()
 	t.Setenv("BTRFS_FAIL_SEND", "1")
@@ -398,7 +390,6 @@ func TestSendSnapshotBtrfsSendWaitFailure(t *testing.T) {
 
 func TestSendSnapshotAgeStartFailure(t *testing.T) {
 	setupTestEnv(t)
-	withDryRun(t, false)
 
 	tempDir := t.TempDir()
 	remoteDir := filepath.Join(tempDir, "remote")
@@ -433,7 +424,6 @@ func TestSendSnapshotAgeStartFailure(t *testing.T) {
 
 func TestSendSnapshotAgeWaitFailure(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
-	withDryRun(t, false)
 
 	tempDir := t.TempDir()
 	t.Setenv("AGE_FAIL", "1")
@@ -461,7 +451,6 @@ func TestSendSnapshotAgeWaitFailure(t *testing.T) {
 
 func TestCleanupOldBackups(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
-	withDryRun(t, false)
 
 	cfg := &Config{
 		RemoteHost: "remote",
@@ -522,7 +511,6 @@ func TestCleanupOldBackups(t *testing.T) {
 
 func TestCleanupOldBackupsNoFullBackups(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
-	withDryRun(t, false)
 
 	cfg := &Config{
 		RemoteHost: "remote",
@@ -537,7 +525,6 @@ func TestCleanupOldBackupsNoFullBackups(t *testing.T) {
 
 func TestCleanupOldBackupsOnlyOneFull(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
-	withDryRun(t, false)
 
 	cfg := &Config{
 		RemoteHost: "remote",
