@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"syscall"
 	"time"
 
 	"github.com/fatih/color"
@@ -20,6 +21,19 @@ func main() {
 	flag.BoolVar(&verbose, "v", false, "Enable verbose logging")
 	flag.BoolVar(&dryRun, "n", false, "Dry run mode (no changes made)")
 	flag.Parse()
+
+	lockFile, err := os.OpenFile("/var/run/btrfs-backup.lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		errLog.Printf("Error opening lock file: %v", err)
+		os.Exit(1)
+	}
+	defer lockFile.Close()
+
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		errLog.Printf("Another instance of btrfs-backup is already running")
+		os.Exit(1)
+	}
+	defer syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
 
 	cfg, err := loadConfig(configPath)
 	if err != nil {
