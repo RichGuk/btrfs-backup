@@ -111,7 +111,15 @@ func main() {
 		}
 
 		if fullSnapshot {
-			if err := cleanupOldBackups(cfg, &vol); err != nil {
+			var newBackupForCleanup *remoteBackup
+			if dryRun {
+				newBackupForCleanup = &remoteBackup{
+					Name:      outfile,
+					Timestamp: currentTime,
+					Kind:      "full",
+				}
+			}
+			if err := cleanupOldBackups(cfg, &vol, newBackupForCleanup); err != nil {
 				errLog.Printf("Error cleaning up old backups: %v", err)
 			}
 		}

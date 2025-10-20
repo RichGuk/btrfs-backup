@@ -189,7 +189,6 @@ func moveTmpFile(cfg *Config, outfile, checksum string) error {
 	)
 
 	if dryRun {
-		fmt.Printf("[DRY-RUN] ssh %s\n", strings.Join(buildSSHArgs(cfg, checksumCmd), " "))
 		return nil
 	}
 
@@ -368,10 +367,17 @@ func needsFullBackup(cfg *Config, vol *Volume, oldSnap string, currentTime time.
 
 	return false
 }
-func cleanupOldBackups(cfg *Config, vol *Volume) error {
+func cleanupOldBackups(cfg *Config, vol *Volume, newBackup *remoteBackup) error {
 	backups, err := listRemoteBackups(cfg, vol)
 	if err != nil {
 		return fmt.Errorf("failed to list remote backups: %w", err)
+	}
+
+	if dryRun && newBackup != nil {
+		backups = append(backups, *newBackup)
+		sort.Slice(backups, func(i, j int) bool {
+			return backups[i].Timestamp.Before(backups[j].Timestamp)
+		})
 	}
 
 	if len(backups) < 2 {
@@ -385,15 +391,15 @@ func cleanupOldBackups(cfg *Config, vol *Volume) error {
 		}
 	}
 
-	if len(fullBackups) < 2 {
+	if len(fullBackups) < 1 {
 		return nil
 	}
 
-	secondToLastFull := fullBackups[len(fullBackups)-2]
+	lastFull := fullBackups[len(fullBackups)-1]
 
 	var toDelete []remoteBackup
 	for _, b := range backups {
-		if b.Timestamp.Before(secondToLastFull.Timestamp) {
+		if b.Timestamp.Before(lastFull.Timestamp) {
 			toDelete = append(toDelete, b)
 		}
 	}
@@ -403,7 +409,7 @@ func cleanupOldBackups(cfg *Config, vol *Volume) error {
 	}
 
 	if verbose {
-		fmt.Printf("→ Cleaning up %d old backup(s) for %s (keeping last 2 full chains)\n", len(toDelete), vol.Name)
+		fmt.Printf("→ Cleaning up %d old backup(s) for %s (keeping latest full chain)\n", len(toDelete), vol.Name)
 	}
 
 	var rmArgs []string

@@ -476,7 +476,7 @@ func TestCleanupOldBackups(t *testing.T) {
 	createTestBackup("root-2024-01-05_10-00-00.inc.btrfs")
 	createTestBackup("root-2024-01-06_10-00-00.full.btrfs")
 
-	if err := cleanupOldBackups(cfg, vol); err != nil {
+	if err := cleanupOldBackups(cfg, vol, nil); err != nil {
 		t.Fatalf("cleanupOldBackups: %v", err)
 	}
 
@@ -493,8 +493,6 @@ func TestCleanupOldBackups(t *testing.T) {
 	}
 
 	expected := []string{
-		"root-2024-01-04_10-00-00.full.btrfs",
-		"root-2024-01-05_10-00-00.inc.btrfs",
 		"root-2024-01-06_10-00-00.full.btrfs",
 	}
 
@@ -518,7 +516,7 @@ func TestCleanupOldBackupsNoFullBackups(t *testing.T) {
 	}
 	vol := &Volume{Name: "root"}
 
-	if err := cleanupOldBackups(cfg, vol); err != nil {
+	if err := cleanupOldBackups(cfg, vol, nil); err != nil {
 		t.Fatalf("cleanupOldBackups on empty dir: %v", err)
 	}
 }
@@ -542,7 +540,7 @@ func TestCleanupOldBackupsOnlyOneFull(t *testing.T) {
 	createTestBackup("root-2024-01-01_10-00-00.full.btrfs")
 	createTestBackup("root-2024-01-02_10-00-00.inc.btrfs")
 
-	if err := cleanupOldBackups(cfg, vol); err != nil {
+	if err := cleanupOldBackups(cfg, vol, nil); err != nil {
 		t.Fatalf("cleanupOldBackups: %v", err)
 	}
 

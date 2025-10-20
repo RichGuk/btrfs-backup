@@ -165,10 +165,10 @@ The tool decides whether to do a full or incremental backup based on:
 ### Backup Cleanup Logic
 
 To keep storage manageable while maintaining restore capability:
-- Keeps the **last 2 full backup chains** (full backup + all its incrementals)
-- Deletes everything older than the second-to-last full backup
-- This ensures you can always restore from at least 2 different points in time
-- Only runs cleanup after successfully creating a new full backup
+- Keeps the **latest full backup chain** (full backup + all its incrementals)
+- Deletes everything older than the latest full backup
+- Only runs cleanup after successfully creating and verifying a new full backup
+- This approach assumes the verified full backup is reliable
 
 ### Backup Workflow
 
