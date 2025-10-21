@@ -68,13 +68,15 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 	}
 
 	if dryRun {
-		var builder strings.Builder
-		builder.WriteString(fmt.Sprintf("btrfs %s", strings.Join(sendArgs, " ")))
-		if cfg.EncryptionKey != "" {
-			builder.WriteString(fmt.Sprintf(" | age -r %s", cfg.EncryptionKey))
+		if veryVerbose {
+			var builder strings.Builder
+			builder.WriteString(fmt.Sprintf("btrfs %s", strings.Join(sendArgs, " ")))
+			if cfg.EncryptionKey != "" {
+				builder.WriteString(fmt.Sprintf(" | age -r %s", cfg.EncryptionKey))
+			}
+			builder.WriteString(fmt.Sprintf(" | ssh %s", strings.Join(sshArgs, " ")))
+			fmt.Printf("[DRY-RUN] %s\n", builder.String())
 		}
-		builder.WriteString(fmt.Sprintf(" | ssh %s", strings.Join(sshArgs, " ")))
-		fmt.Printf("[DRY-RUN] %s\n", builder.String())
 		return "", nil
 	}
 
@@ -143,7 +145,9 @@ func moveTmpFile(cfg *Config, outfile, checksum string) error {
 	)
 
 	if dryRun {
-		fmt.Printf("[DRY-RUN] ssh %s\n", strings.Join(buildSSHArgs(cfg, remoteCmd), " "))
+		if veryVerbose {
+			fmt.Printf("[DRY-RUN] ssh %s\n", strings.Join(buildSSHArgs(cfg, remoteCmd), " "))
+		}
 	} else {
 		sshCmd := exec.Command("ssh", buildSSHArgs(cfg, remoteCmd)...)
 		sshCmd.Stdout = os.Stdout
@@ -425,7 +429,9 @@ func cleanupOldBackups(cfg *Config, vol *Volume, newBackup *remoteBackup) error 
 	remoteCmd := fmt.Sprintf("rm -f %s", strings.Join(rmArgs, " "))
 
 	if dryRun {
-		fmt.Printf("[DRY-RUN] ssh %s\n", strings.Join(buildSSHArgs(cfg, remoteCmd), " "))
+		if veryVerbose {
+			fmt.Printf("[DRY-RUN] ssh %s\n", strings.Join(buildSSHArgs(cfg, remoteCmd), " "))
+		}
 		return nil
 	}
 

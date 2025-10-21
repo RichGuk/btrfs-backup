@@ -11,16 +11,28 @@ import (
 )
 
 var (
-	configPath string
-	verbose    bool
-	dryRun     bool
+	configPath  string
+	verbose     bool
+	veryVerbose bool
+	dryRun      bool
 )
 
 func main() {
+	var vv bool
 	flag.StringVar(&configPath, "config", "/etc/btrfs-backup.yaml", "Path to config file")
 	flag.BoolVar(&verbose, "v", false, "Enable verbose logging")
+	flag.BoolVar(&vv, "vv", false, "Enable very verbose logging (includes dry-run commands)")
 	flag.BoolVar(&dryRun, "n", false, "Dry run mode (no changes made)")
 	flag.Parse()
+
+	if vv {
+		verbose = true
+		veryVerbose = true
+	}
+
+	if dryRun {
+		verbose = true
+	}
 
 	lockFile, err := os.OpenFile("/var/run/btrfs-backup.lock", os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {

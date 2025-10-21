@@ -97,11 +97,14 @@ age-keygen -o backup-key.txt
 # Normal run
 sudo btrfs-backup
 
-# Dry run (see what would happen)
+# Dry run (implies verbose, shows what would happen)
 sudo btrfs-backup -n
 
-# Verbose output
+# Verbose output (detailed logging)
 sudo btrfs-backup -v
+
+# Very verbose dry run (includes command previews)
+sudo btrfs-backup -vv -n
 
 # Custom config location
 sudo btrfs-backup -config /path/to/config.yaml

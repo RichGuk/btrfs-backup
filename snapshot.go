@@ -38,7 +38,9 @@ func createSnapshot(src, snapDir string, currentTime time.Time) (string, error) 
 	createCmd := exec.Command("btrfs", "subvolume", "snapshot", "-r", src, path)
 
 	if dryRun {
-		fmt.Printf("[DRY-RUN] %s\n", strings.Join(createCmd.Args, " "))
+		if veryVerbose {
+			fmt.Printf("[DRY-RUN] %s\n", strings.Join(createCmd.Args, " "))
+		}
 		return path, nil
 	}
 
@@ -62,7 +64,9 @@ func deleteOldSnapshot(snapshot string) {
 	}
 
 	if dryRun {
-		fmt.Printf("[DRY-RUN] %s\n", strings.Join(delCmd.Args, " "))
+		if veryVerbose {
+			fmt.Printf("[DRY-RUN] %s\n", strings.Join(delCmd.Args, " "))
+		}
 	} else {
 		if err := delCmd.Run(); err != nil {
 			errLog.Printf("Error deleting old snapshot: %v", err)
