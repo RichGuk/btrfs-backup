@@ -100,7 +100,17 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 
 	hasher := sha256.New()
 	sshCmd := exec.Command("ssh", sshArgs...)
-	sshCmd.Stdin = io.TeeReader(stream, hasher)
+
+	var reader io.Reader
+	if verbose {
+		progressWriter := NewProgressWriter(os.Stderr, "Transfer")
+		defer progressWriter.Finish()
+		reader = io.TeeReader(stream, io.MultiWriter(hasher, progressWriter))
+	} else {
+		reader = io.TeeReader(stream, hasher)
+	}
+
+	sshCmd.Stdin = reader
 
 	if err := sendCmd.Start(); err != nil {
 		return "", fmt.Errorf("btrfs send start failed: %w", err)
