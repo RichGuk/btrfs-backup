@@ -55,7 +55,7 @@ func (pw *ProgressWriter) displayLoop() {
 			if instantRate > 0 {
 				status = fmt.Sprintf("%s/s", formatBytes(int64(instantRate)))
 			} else if pw.bytesWritten > 0 {
-				status = "stalled"
+				status = "0.0 B/s"
 			} else {
 				status = "waiting..."
 			}
