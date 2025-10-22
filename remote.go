@@ -111,9 +111,9 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 	}
 
 	var reader io.Reader
+	var progressWriter *ProgressWriter
 	if progress {
-		progressWriter := NewProgressWriter(os.Stderr, "Transfer")
-		defer progressWriter.Finish()
+		progressWriter = NewProgressWriter(os.Stderr, "Transfer")
 		reader = io.TeeReader(stream, io.MultiWriter(hasher, progressWriter))
 	} else {
 		reader = io.TeeReader(stream, hasher)
@@ -162,6 +162,10 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 	}
 	if sendErr != nil {
 		return "", fmt.Errorf("btrfs send failed: %w", sendErr)
+	}
+
+	if progressWriter != nil {
+		progressWriter.Finish()
 	}
 
 	localChecksum := fmt.Sprintf("%x", hasher.Sum(nil))

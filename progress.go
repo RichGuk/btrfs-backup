@@ -17,6 +17,7 @@ type ProgressWriter struct {
 	label        string
 	updateTicker *time.Ticker
 	done         chan bool
+	wg           sync.WaitGroup
 }
 
 func NewProgressWriter(output io.Writer, label string) *ProgressWriter {
@@ -30,12 +31,14 @@ func NewProgressWriter(output io.Writer, label string) *ProgressWriter {
 		done:         make(chan bool),
 	}
 
+	pw.wg.Add(1)
 	go pw.displayLoop()
 
 	return pw
 }
 
 func (pw *ProgressWriter) displayLoop() {
+	defer pw.wg.Done()
 	for {
 		select {
 		case <-pw.done:
@@ -83,6 +86,7 @@ func (pw *ProgressWriter) Write(p []byte) (int, error) {
 func (pw *ProgressWriter) Finish() {
 	pw.updateTicker.Stop()
 	close(pw.done)
+	pw.wg.Wait()
 
 	pw.mu.Lock()
 	defer pw.mu.Unlock()
