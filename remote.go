@@ -102,7 +102,7 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 	sshCmd := exec.Command("ssh", sshArgs...)
 
 	var reader io.Reader
-	if verbose {
+	if progress {
 		progressWriter := NewProgressWriter(os.Stderr, "Transfer")
 		defer progressWriter.Finish()
 		reader = io.TeeReader(stream, io.MultiWriter(hasher, progressWriter))

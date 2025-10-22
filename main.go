@@ -15,6 +15,7 @@ var (
 	verbose     bool
 	veryVerbose bool
 	dryRun      bool
+	progress    bool
 )
 
 func main() {
@@ -23,6 +24,8 @@ func main() {
 	flag.BoolVar(&verbose, "v", false, "Enable verbose logging")
 	flag.BoolVar(&vv, "vv", false, "Enable very verbose logging (includes dry-run commands)")
 	flag.BoolVar(&dryRun, "n", false, "Dry run mode (no changes made)")
+	flag.BoolVar(&progress, "p", false, "Show transfer progress")
+	flag.BoolVar(&progress, "progress", false, "Show transfer progress")
 	flag.Parse()
 
 	if vv {
