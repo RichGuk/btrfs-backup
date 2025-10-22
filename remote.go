@@ -172,6 +172,9 @@ func moveTmpFile(cfg *Config, outfile, checksum string) error {
 	}
 
 	if !dryRun && checksum != "" {
+		if verbose {
+			fmt.Printf("→ Validating checksum on remote...\n")
+		}
 		if err := validateRemoteChecksum(cfg, outfile, checksum); err != nil {
 			errLog.Printf("Checksum validation failed for %s: %v", outfile, err)
 

@@ -125,18 +125,20 @@ func main() {
 			fmt.Printf("→ SHA256: %s\n", checksum)
 		}
 
-		if fullSnapshot {
-			var newBackupForCleanup *remoteBackup
-			if dryRun {
-				newBackupForCleanup = &remoteBackup{
-					Name:      outfile,
-					Timestamp: currentTime,
-					Kind:      "full",
-				}
+		var newBackupForCleanup *remoteBackup
+		if dryRun {
+			kind := "inc"
+			if fullSnapshot {
+				kind = "full"
 			}
-			if err := cleanupOldBackups(cfg, &vol, newBackupForCleanup); err != nil {
-				errLog.Printf("Error cleaning up old backups: %v", err)
+			newBackupForCleanup = &remoteBackup{
+				Name:      outfile,
+				Timestamp: currentTime,
+				Kind:      kind,
 			}
+		}
+		if err := cleanupOldBackups(cfg, &vol, newBackupForCleanup); err != nil {
+			errLog.Printf("Error cleaning up old backups: %v", err)
 		}
 
 		if oldSnap != "" && oldSnap != newSnap {

@@ -82,7 +82,7 @@ func (pw *ProgressWriter) Write(p []byte) (int, error) {
 
 func (pw *ProgressWriter) Finish() {
 	pw.updateTicker.Stop()
-	pw.done <- true
+	close(pw.done)
 
 	pw.mu.Lock()
 	defer pw.mu.Unlock()
