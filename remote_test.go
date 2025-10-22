@@ -90,44 +90,6 @@ func TestMoveTmpFileWithChecksum(t *testing.T) {
 	}
 }
 
-func TestMoveTmpFileChecksumMismatch(t *testing.T) {
-	_, remoteDir := setupTestEnv(t)
-
-	cfg := &Config{
-		RemoteHost: "remote",
-		RemoteDest: remoteDir,
-	}
-
-	outfile := "volume-inc.btrfs"
-	tmpPath := filepath.Join(remoteDir, outfile+".tmp")
-	if err := os.WriteFile(tmpPath, []byte("content"), 0o644); err != nil {
-		t.Fatalf("writing tmp file: %v", err)
-	}
-
-	t.Cleanup(func() {
-		errLog.SetOutput(os.Stderr)
-	})
-	errLog.SetOutput(os.NewFile(0, os.DevNull))
-
-	err := moveTmpFile(cfg, outfile, "deadbeef")
-	if err == nil {
-		t.Fatal("expected moveTmpFile to fail due to checksum mismatch")
-	}
-
-	finalPath := filepath.Join(remoteDir, outfile)
-	if _, statErr := os.Stat(finalPath); !os.IsNotExist(statErr) {
-		t.Fatalf("expected final file to be removed, stat err: %v", statErr)
-	}
-
-	if _, statErr := os.Stat(filepath.Join(remoteDir, outfile+".tmp")); !os.IsNotExist(statErr) {
-		t.Fatalf("expected tmp file to be removed after rename, stat err: %v", statErr)
-	}
-
-	if _, statErr := os.Stat(filepath.Join(remoteDir, outfile+".sha256")); !os.IsNotExist(statErr) {
-		t.Fatalf("expected no checksum file to be created, stat err: %v", statErr)
-	}
-}
-
 func TestValidateRemoteChecksum(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
 

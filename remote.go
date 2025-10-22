@@ -30,7 +30,8 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 	ok := false
 
 	tmpFile := outfile + ".tmp"
-	sshArgs := buildSSHArgs(cfg, fmt.Sprintf("cat > %s", shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))))
+	remoteFilePath := shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))
+	sshArgs := buildSSHArgs(cfg, fmt.Sprintf("tee %s | sha256sum", remoteFilePath))
 
 	defer func(success *bool) {
 		if *success || dryRun {
@@ -104,6 +105,11 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 	sshCmd := exec.Command("ssh", sshArgs...)
 	sshCmd.Stderr = os.Stderr
 
+	sshStdout, err := sshCmd.StdoutPipe()
+	if err != nil {
+		return "", err
+	}
+
 	var reader io.Reader
 	if progress {
 		progressWriter := NewProgressWriter(os.Stderr, "Transfer")
@@ -124,7 +130,20 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 		}
 	}
 
-	if err := sshCmd.Run(); err != nil {
+	if err := sshCmd.Start(); err != nil {
+		_ = sendCmd.Wait()
+		if encryptCmd != nil {
+			_ = encryptCmd.Wait()
+		}
+		return "", fmt.Errorf("ssh start failed: %w", err)
+	}
+
+	remoteChecksumOutput, err := io.ReadAll(sshStdout)
+	if err != nil {
+		return "", fmt.Errorf("failed to read remote checksum: %w", err)
+	}
+
+	if err := sshCmd.Wait(); err != nil {
 		_ = sendCmd.Wait()
 		if encryptCmd != nil {
 			_ = encryptCmd.Wait()
@@ -145,8 +164,24 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 		return "", fmt.Errorf("btrfs send failed: %w", sendErr)
 	}
 
+	localChecksum := fmt.Sprintf("%x", hasher.Sum(nil))
+
+	remoteChecksumFields := strings.Fields(strings.TrimSpace(string(remoteChecksumOutput)))
+	if len(remoteChecksumFields) == 0 {
+		return "", fmt.Errorf("unable to parse remote checksum output: %q", string(remoteChecksumOutput))
+	}
+
+	remoteChecksum := remoteChecksumFields[0]
+	if !strings.EqualFold(remoteChecksum, localChecksum) {
+		return "", fmt.Errorf("checksum mismatch: local=%s remote=%s", localChecksum, remoteChecksum)
+	}
+
+	if verbose {
+		fmt.Printf("→ Checksum validation passed\n")
+	}
+
 	ok = true
-	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
+	return localChecksum, nil
 }
 
 func moveTmpFile(cfg *Config, outfile, checksum string) error {
@@ -168,25 +203,6 @@ func moveTmpFile(cfg *Config, outfile, checksum string) error {
 
 		if err := sshCmd.Run(); err != nil {
 			return err
-		}
-	}
-
-	if !dryRun && checksum != "" {
-		if verbose {
-			fmt.Printf("→ Validating checksum on remote...\n")
-		}
-		if err := validateRemoteChecksum(cfg, outfile, checksum); err != nil {
-			errLog.Printf("Checksum validation failed for %s: %v", outfile, err)
-
-			cleanupCmd := exec.Command(
-				"ssh",
-				buildSSHArgs(cfg, fmt.Sprintf("rm -f %s", shellEscape(filepath.Join(cfg.RemoteDest, outfile))))...,
-			)
-			_ = cleanupCmd.Run()
-
-			return err
-		} else if verbose {
-			fmt.Printf("→ Checksum validation passed for %s\n", outfile)
 		}
 	}
 
