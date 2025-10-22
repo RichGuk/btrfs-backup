@@ -10,19 +10,63 @@ import (
 type ProgressWriter struct {
 	output       io.Writer
 	bytesWritten int64
+	lastBytes    int64
 	startTime    time.Time
 	lastUpdate   time.Time
 	mu           sync.Mutex
 	label        string
+	updateTicker *time.Ticker
+	done         chan bool
 }
 
 func NewProgressWriter(output io.Writer, label string) *ProgressWriter {
 	now := time.Now()
-	return &ProgressWriter{
-		output:     output,
-		startTime:  now,
-		lastUpdate: now,
-		label:      label,
+	pw := &ProgressWriter{
+		output:       output,
+		startTime:    now,
+		lastUpdate:   now,
+		label:        label,
+		updateTicker: time.NewTicker(time.Second),
+		done:         make(chan bool),
+	}
+
+	go pw.displayLoop()
+
+	return pw
+}
+
+func (pw *ProgressWriter) displayLoop() {
+	for {
+		select {
+		case <-pw.done:
+			return
+		case now := <-pw.updateTicker.C:
+			pw.mu.Lock()
+			elapsed := now.Sub(pw.startTime)
+
+			bytesSinceLastUpdate := pw.bytesWritten - pw.lastBytes
+			instantRate := float64(bytesSinceLastUpdate)
+			pw.lastBytes = pw.bytesWritten
+
+			var status string
+			if instantRate > 0 {
+				status = fmt.Sprintf("%s/s", formatBytes(int64(instantRate)))
+			} else if pw.bytesWritten > 0 {
+				status = "stalled"
+			} else {
+				status = "waiting..."
+			}
+
+			_, _ = fmt.Fprintf(
+				pw.output,
+				"\r\033[K→ %s: %s transferred, %s, %s elapsed",
+				pw.label,
+				formatBytes(pw.bytesWritten),
+				status,
+				formatDuration(elapsed),
+			)
+			pw.mu.Unlock()
+		}
 	}
 }
 
@@ -31,29 +75,15 @@ func (pw *ProgressWriter) Write(p []byte) (int, error) {
 
 	pw.mu.Lock()
 	pw.bytesWritten += int64(n)
-	now := time.Now()
-
-	if now.Sub(pw.lastUpdate) >= time.Second {
-		pw.lastUpdate = now
-		elapsed := now.Sub(pw.startTime)
-		bytesPerSec := float64(pw.bytesWritten) / elapsed.Seconds()
-
-		_, _ = fmt.Fprintf(
-			pw.output,
-			"\r→ %s: %s transferred, %s/s, %s elapsed",
-			pw.label,
-			formatBytes(pw.bytesWritten),
-			formatBytes(int64(bytesPerSec)),
-			formatDuration(elapsed),
-		)
-	}
-
 	pw.mu.Unlock()
 
 	return n, nil
 }
 
 func (pw *ProgressWriter) Finish() {
+	pw.updateTicker.Stop()
+	pw.done <- true
+
 	pw.mu.Lock()
 	defer pw.mu.Unlock()
 
@@ -62,7 +92,7 @@ func (pw *ProgressWriter) Finish() {
 
 	_, _ = fmt.Fprintf(
 		pw.output,
-		"\r→ %s: %s transferred, %s/s average, %s total\n",
+		"\r\033[K→ %s: %s transferred, %s/s average, %s total\n",
 		pw.label,
 		formatBytes(pw.bytesWritten),
 		formatBytes(int64(avgBytesPerSec)),

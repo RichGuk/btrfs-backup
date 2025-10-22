@@ -81,6 +81,7 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 	}
 
 	sendCmd := exec.Command("btrfs", sendArgs...)
+	sendCmd.Stderr = os.Stderr
 	stdout, err := sendCmd.StdoutPipe()
 	if err != nil {
 		return "", err
@@ -91,6 +92,7 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 	if cfg.EncryptionKey != "" {
 		encryptCmd = exec.Command("age", "-r", cfg.EncryptionKey)
 		encryptCmd.Stdin = stream
+		encryptCmd.Stderr = os.Stderr
 		outPipe, err := encryptCmd.StdoutPipe()
 		if err != nil {
 			return "", err
@@ -100,6 +102,7 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 
 	hasher := sha256.New()
 	sshCmd := exec.Command("ssh", sshArgs...)
+	sshCmd.Stderr = os.Stderr
 
 	var reader io.Reader
 	if progress {
