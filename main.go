@@ -16,6 +16,7 @@ var (
 	veryVerbose bool
 	dryRun      bool
 	progress    bool
+	force       bool
 )
 
 func main() {
@@ -26,6 +27,8 @@ func main() {
 	flag.BoolVar(&dryRun, "n", false, "Dry run mode (no changes made)")
 	flag.BoolVar(&progress, "p", false, "Show transfer progress")
 	flag.BoolVar(&progress, "progress", false, "Show transfer progress")
+	flag.BoolVar(&force, "f", false, "Force full backup")
+	flag.BoolVar(&force, "force", false, "Force full backup")
 	flag.Parse()
 
 	if vv {
@@ -80,7 +83,12 @@ func main() {
 		}
 
 		fullSnapshot := false
-		if needsFullBackup(cfg, &vol, oldSnap, currentTime) {
+		if force {
+			fullSnapshot = true
+			if verbose {
+				fmt.Printf("→ Forcing full backup for %s\n", vol.Name)
+			}
+		} else if needsFullBackup(cfg, &vol, oldSnap, currentTime) {
 			fullSnapshot = true
 			if verbose {
 				fmt.Printf("→ Doing full backup for %s\n", vol.Name)
