@@ -32,7 +32,6 @@ func loadConfig(path string) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
-
 	}
 	if cfg.MaxAgeDays == 0 {
 		cfg.MaxAgeDays = 7

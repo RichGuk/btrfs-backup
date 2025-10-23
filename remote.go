@@ -30,8 +30,9 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 	ok := false
 
 	tmpFile := outfile + ".tmp"
-	remoteFilePath := shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))
-	sshArgs := buildSSHArgs(cfg, fmt.Sprintf("tee %s | sha256sum", remoteFilePath))
+
+	// Use tee to write file and compute checksum in parallel during transfer
+	remoteWriteCommandSshArgs := buildSSHArgs(cfg, fmt.Sprintf("tee %s | sha256sum", shellEscape(filepath.Join(cfg.RemoteDest, tmpFile))))
 
 	defer func(success *bool) {
 		if *success || dryRun {
@@ -75,7 +76,7 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 			if cfg.EncryptionKey != "" {
 				builder.WriteString(fmt.Sprintf(" | age -r %s", cfg.EncryptionKey))
 			}
-			builder.WriteString(fmt.Sprintf(" | ssh %s", strings.Join(sshArgs, " ")))
+			builder.WriteString(fmt.Sprintf(" | ssh %s", strings.Join(remoteWriteCommandSshArgs, " ")))
 			fmt.Printf("[DRY-RUN] %s\n", builder.String())
 		}
 		return "", nil
@@ -102,7 +103,7 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 	}
 
 	hasher := sha256.New()
-	sshCmd := exec.Command("ssh", sshArgs...)
+	sshCmd := exec.Command("ssh", remoteWriteCommandSshArgs...)
 	sshCmd.Stderr = os.Stderr
 
 	sshStdout, err := sshCmd.StdoutPipe()
@@ -237,29 +238,6 @@ func moveTmpFile(cfg *Config, outfile, checksum string) error {
 	sshChecksumCmd.Stderr = os.Stderr
 
 	return sshChecksumCmd.Run()
-}
-
-func validateRemoteChecksum(cfg *Config, outfile, checksum string) error {
-	remotePath := filepath.Join(cfg.RemoteDest, outfile)
-	checksumCmd := fmt.Sprintf("sha256sum %s", shellEscape(remotePath))
-
-	sshChecksumCmd := exec.Command("ssh", buildSSHArgs(cfg, checksumCmd)...)
-	output, err := sshChecksumCmd.Output()
-	if err != nil {
-		return err
-	}
-
-	remoteChecksumFields := strings.Fields(strings.TrimSpace(string(output)))
-	if len(remoteChecksumFields) == 0 {
-		return fmt.Errorf("unable to parse remote checksum output: %q", string(output))
-	}
-
-	remoteChecksum := remoteChecksumFields[0]
-	if !strings.EqualFold(remoteChecksum, checksum) {
-		return fmt.Errorf("expected %s but remote reported %s", checksum, remoteChecksum)
-	}
-
-	return nil
 }
 
 func remoteBackupExists(cfg *Config, outfile string) bool {

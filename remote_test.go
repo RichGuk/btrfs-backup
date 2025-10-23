@@ -90,36 +90,6 @@ func TestMoveTmpFileWithChecksum(t *testing.T) {
 	}
 }
 
-func TestValidateRemoteChecksum(t *testing.T) {
-	_, remoteDir := setupTestEnv(t)
-
-	cfg := &Config{
-		RemoteHost: "remote",
-		RemoteDest: remoteDir,
-	}
-
-	outfile := "volume-full.btrfs"
-	finalPath := filepath.Join(remoteDir, outfile)
-	content := []byte("payload")
-	if err := os.WriteFile(finalPath, content, 0o644); err != nil {
-		t.Fatalf("writing final file: %v", err)
-	}
-
-	checksum := fmt.Sprintf("%x", sha256.Sum256(content))
-	if err := validateRemoteChecksum(cfg, outfile, checksum); err != nil {
-		t.Fatalf("validateRemoteChecksum: %v", err)
-	}
-
-	t.Cleanup(func() {
-		errLog.SetOutput(os.Stderr)
-	})
-	errLog.SetOutput(os.NewFile(0, os.DevNull))
-
-	if err := validateRemoteChecksum(cfg, outfile, "deadbeef"); err == nil {
-		t.Fatal("expected checksum validation failure")
-	}
-}
-
 func TestRemoteBackupExists(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
 
