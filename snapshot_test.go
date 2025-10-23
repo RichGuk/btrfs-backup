@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -78,7 +79,7 @@ func TestCreateSnapshot(t *testing.T) {
 	}
 
 	now := time.Date(2024, 5, 12, 11, 30, 45, 0, time.UTC)
-	got, err := createSnapshot(srcDir, snapDir, now)
+	got, err := createSnapshot(context.Background(), srcDir, snapDir, now)
 	if err != nil {
 		t.Fatalf("createSnapshot: %v", err)
 	}
@@ -117,7 +118,7 @@ func TestCreateSnapshotError(t *testing.T) {
 		t.Fatalf("creating snapshot dir: %v", err)
 	}
 
-	_, err := createSnapshot(srcDir, snapDir, time.Now())
+	_, err := createSnapshot(context.Background(), srcDir, snapDir, time.Now())
 	if err == nil {
 		t.Fatal("expected createSnapshot to fail")
 	}
@@ -134,7 +135,7 @@ func TestDeleteOldSnapshot(t *testing.T) {
 		t.Fatalf("creating snapshot dir: %v", err)
 	}
 
-	deleteOldSnapshot(toDelete)
+	deleteOldSnapshot(context.Background(), toDelete)
 
 	if _, err := os.Stat(toDelete); !os.IsNotExist(err) {
 		t.Fatalf("expected snapshot to be deleted, stat err: %v", err)

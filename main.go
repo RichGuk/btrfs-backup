@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"syscall"
 	"time"
 
@@ -40,6 +42,17 @@ func main() {
 		verbose = true
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	signalChannel := make(chan os.Signal, 1)
+	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-signalChannel
+		fmt.Fprintf(os.Stderr, "\n→ Interrupt received, cancelling operations...\n")
+		cancel()
+	}()
+
 	lockFile, err := os.OpenFile("/var/run/btrfs-backup.lock", os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		errLog.Printf("Error opening lock file: %v", err)
@@ -63,7 +76,7 @@ func main() {
 
 	for _, vol := range cfg.Volumes {
 		if !dryRun {
-			if err := checkBtrfsAccess(&vol); err != nil {
+			if err := checkBtrfsAccess(ctx, &vol); err != nil {
 				errLog.Printf("Error accessing btrfs subvolume: %v", err)
 				errLog.Println("Make sure the source path is a valid btrfs subvolume and that you have the necessary permissions.")
 				os.Exit(1)
@@ -88,7 +101,7 @@ func main() {
 			if verbose {
 				fmt.Printf("→ Forcing full backup for %s\n", vol.Name)
 			}
-		} else if needsFullBackup(cfg, &vol, oldSnap, currentTime) {
+		} else if needsFullBackup(ctx, cfg, &vol, oldSnap, currentTime) {
 			fullSnapshot = true
 			if verbose {
 				fmt.Printf("→ Doing full backup for %s\n", vol.Name)
@@ -103,7 +116,7 @@ func main() {
 		}
 		outfile := fmt.Sprintf("%s-%s.%s%s", vol.Name, currentTime.Format("2006-01-02_15-04-05"), suffix, remoteFileSuffix(cfg))
 
-		if remoteBackupExists(cfg, outfile) {
+		if remoteBackupExists(ctx, cfg, outfile) {
 			color.Red("⚠️ Backup file %s already exists on remote, skipping volume %s\n", outfile, vol.Name)
 
 			if verbose || dryRun {
@@ -112,19 +125,19 @@ func main() {
 			continue
 		}
 
-		newSnap, err := createSnapshot(vol.Src, vol.SnapDir, currentTime)
+		newSnap, err := createSnapshot(ctx, vol.Src, vol.SnapDir, currentTime)
 		if err != nil {
 			errLog.Printf("Error creating snapshot: %v", err)
 			os.Exit(1)
 		}
 
-		checksum, err := sendSnapshot(cfg, newSnap, oldSnap, outfile, fullSnapshot)
+		checksum, err := sendSnapshot(ctx, cfg, newSnap, oldSnap, outfile, fullSnapshot)
 		if err != nil {
 			errLog.Printf("Error sending snapshot: %v", err)
 			os.Exit(1)
 		}
 
-		if err := moveTmpFile(cfg, outfile, checksum); err != nil {
+		if err := moveTmpFile(ctx, cfg, outfile, checksum); err != nil {
 			errLog.Printf("Error finalizing remote file: %v", err)
 			os.Exit(1)
 		}
@@ -145,12 +158,12 @@ func main() {
 				Kind:      kind,
 			}
 		}
-		if err := cleanupOldBackups(cfg, &vol, newBackupForCleanup); err != nil {
+		if err := cleanupOldBackups(ctx, cfg, &vol, newBackupForCleanup); err != nil {
 			errLog.Printf("Error cleaning up old backups: %v", err)
 		}
 
 		if oldSnap != "" && oldSnap != newSnap {
-			deleteOldSnapshot(oldSnap)
+			deleteOldSnapshot(ctx, oldSnap)
 		}
 
 		if verbose {

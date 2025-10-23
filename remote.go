@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -26,7 +27,7 @@ func remoteFileSuffix(cfg *Config) string {
 	return ".btrfs"
 }
 
-func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (checksum string, err error) {
+func sendSnapshot(ctx context.Context, cfg *Config, newSnap, oldSnap, outfile string, full bool) (checksum string, err error) {
 	ok := false
 
 	tmpFile := outfile + ".tmp"
@@ -82,7 +83,7 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 		return "", nil
 	}
 
-	sendCmd := exec.Command("btrfs", sendArgs...)
+	sendCmd := exec.CommandContext(ctx, "btrfs", sendArgs...)
 	sendCmd.Stderr = os.Stderr
 	stdout, err := sendCmd.StdoutPipe()
 	if err != nil {
@@ -92,7 +93,7 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 	var stream io.Reader = stdout
 	var encryptCmd *exec.Cmd
 	if cfg.EncryptionKey != "" {
-		encryptCmd = exec.Command("age", "-r", cfg.EncryptionKey)
+		encryptCmd = exec.CommandContext(ctx, "age", "-r", cfg.EncryptionKey)
 		encryptCmd.Stdin = stream
 		encryptCmd.Stderr = os.Stderr
 		outPipe, err := encryptCmd.StdoutPipe()
@@ -103,7 +104,7 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 	}
 
 	hasher := sha256.New()
-	sshCmd := exec.Command("ssh", remoteWriteCommandSshArgs...)
+	sshCmd := exec.CommandContext(ctx, "ssh", remoteWriteCommandSshArgs...)
 	sshCmd.Stderr = os.Stderr
 
 	sshStdout, err := sshCmd.StdoutPipe()
@@ -189,7 +190,7 @@ func sendSnapshot(cfg *Config, newSnap, oldSnap, outfile string, full bool) (che
 	return localChecksum, nil
 }
 
-func moveTmpFile(cfg *Config, outfile, checksum string) error {
+func moveTmpFile(ctx context.Context, cfg *Config, outfile, checksum string) error {
 	tmpFile := outfile + ".tmp"
 	remoteCmd := fmt.Sprintf(
 		"mv %s %s",
@@ -202,7 +203,7 @@ func moveTmpFile(cfg *Config, outfile, checksum string) error {
 			fmt.Printf("[DRY-RUN] ssh %s\n", strings.Join(buildSSHArgs(cfg, remoteCmd), " "))
 		}
 	} else {
-		sshCmd := exec.Command("ssh", buildSSHArgs(cfg, remoteCmd)...)
+		sshCmd := exec.CommandContext(ctx, "ssh", buildSSHArgs(cfg, remoteCmd)...)
 		sshCmd.Stdout = os.Stdout
 		sshCmd.Stderr = os.Stderr
 
@@ -233,24 +234,24 @@ func moveTmpFile(cfg *Config, outfile, checksum string) error {
 		return nil
 	}
 
-	sshChecksumCmd := exec.Command("ssh", buildSSHArgs(cfg, checksumCmd)...)
+	sshChecksumCmd := exec.CommandContext(ctx, "ssh", buildSSHArgs(cfg, checksumCmd)...)
 	sshChecksumCmd.Stdout = os.Stdout
 	sshChecksumCmd.Stderr = os.Stderr
 
 	return sshChecksumCmd.Run()
 }
 
-func remoteBackupExists(cfg *Config, outfile string) bool {
+func remoteBackupExists(ctx context.Context, cfg *Config, outfile string) bool {
 	remotePath := shellEscape(filepath.Join(cfg.RemoteDest, outfile))
-	lsCmd := exec.Command("ssh", buildSSHArgs(cfg, fmt.Sprintf("test -f %s && echo exists", remotePath))...)
+	lsCmd := exec.CommandContext(ctx, "ssh", buildSSHArgs(cfg, fmt.Sprintf("test -f %s && echo exists", remotePath))...)
 
 	output, err := lsCmd.Output()
 	return err == nil && strings.TrimSpace(string(output)) == "exists"
 }
 
-func listRemoteBackups(cfg *Config, vol *Volume) ([]remoteBackup, error) {
+func listRemoteBackups(ctx context.Context, cfg *Config, vol *Volume) ([]remoteBackup, error) {
 	remoteCmd := fmt.Sprintf("cd %s && ls -1", shellEscape(cfg.RemoteDest))
-	cmd := exec.Command("ssh", buildSSHArgs(cfg, remoteCmd)...)
+	cmd := exec.CommandContext(ctx, "ssh", buildSSHArgs(cfg, remoteCmd)...)
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -326,12 +327,12 @@ func countIncrementalsSince(backups []remoteBackup, since time.Time) int {
 	return count
 }
 
-func needsFullBackup(cfg *Config, vol *Volume, oldSnap string, currentTime time.Time) bool {
+func needsFullBackup(ctx context.Context, cfg *Config, vol *Volume, oldSnap string, currentTime time.Time) bool {
 	if oldSnap == "" {
 		return true
 	}
 
-	remoteBackups, err := listRemoteBackups(cfg, vol)
+	remoteBackups, err := listRemoteBackups(ctx, cfg, vol)
 	if err != nil {
 		errLog.Printf("Error retrieving remote backups: %v", err)
 		return true
@@ -385,8 +386,8 @@ func needsFullBackup(cfg *Config, vol *Volume, oldSnap string, currentTime time.
 
 	return false
 }
-func cleanupOldBackups(cfg *Config, vol *Volume, newBackup *remoteBackup) error {
-	backups, err := listRemoteBackups(cfg, vol)
+func cleanupOldBackups(ctx context.Context, cfg *Config, vol *Volume, newBackup *remoteBackup) error {
+	backups, err := listRemoteBackups(ctx, cfg, vol)
 	if err != nil {
 		return fmt.Errorf("failed to list remote backups: %w", err)
 	}
@@ -449,7 +450,7 @@ func cleanupOldBackups(cfg *Config, vol *Volume, newBackup *remoteBackup) error 
 		return nil
 	}
 
-	sshCmd := exec.Command("ssh", buildSSHArgs(cfg, remoteCmd)...)
+	sshCmd := exec.CommandContext(ctx, "ssh", buildSSHArgs(cfg, remoteCmd)...)
 	if err := sshCmd.Run(); err != nil {
 		return fmt.Errorf("failed to delete old backups: %w", err)
 	}

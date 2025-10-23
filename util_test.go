@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -259,7 +260,7 @@ func TestListRemoteBackups(t *testing.T) {
 	}
 
 	t.Run("empty directory", func(t *testing.T) {
-		backups, err := listRemoteBackups(cfg, vol)
+		backups, err := listRemoteBackups(context.Background(), cfg, vol)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -283,7 +284,7 @@ func TestListRemoteBackups(t *testing.T) {
 			}
 		}
 
-		backups, err := listRemoteBackups(cfg, vol)
+		backups, err := listRemoteBackups(context.Background(), cfg, vol)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -308,7 +309,7 @@ func TestNeedsFullBackup(t *testing.T) {
 	t.Run("no old snapshot", func(t *testing.T) {
 		cfg := &Config{}
 		vol := &Volume{Name: "vol"}
-		if !needsFullBackup(cfg, vol, "", time.Now()) {
+		if !needsFullBackup(context.Background(), cfg, vol, "", time.Now()) {
 			t.Error("expected full backup when no old snapshot")
 		}
 	})
@@ -322,7 +323,7 @@ func TestNeedsFullBackup(t *testing.T) {
 		vol := &Volume{Name: "vol"}
 		oldSnap := "/snapshots/btrfs-backup-2024-05-10_10-00-00"
 
-		if !needsFullBackup(cfg, vol, oldSnap, time.Now()) {
+		if !needsFullBackup(context.Background(), cfg, vol, oldSnap, time.Now()) {
 			t.Error("expected full backup when no remote backups")
 		}
 	})
@@ -341,7 +342,7 @@ func TestNeedsFullBackup(t *testing.T) {
 
 		oldSnap := "/snapshots/btrfs-backup-2024-05-10_10-00-00"
 
-		if !needsFullBackup(cfg, vol, oldSnap, time.Now()) {
+		if !needsFullBackup(context.Background(), cfg, vol, oldSnap, time.Now()) {
 			t.Error("expected full backup when remote missing backup matching old snapshot timestamp")
 		}
 	})
@@ -360,7 +361,7 @@ func TestNeedsFullBackup(t *testing.T) {
 
 		oldSnap := "/snapshots/btrfs-backup-2024-05-10_10-00-00"
 
-		if !needsFullBackup(cfg, vol, oldSnap, time.Now()) {
+		if !needsFullBackup(context.Background(), cfg, vol, oldSnap, time.Now()) {
 			t.Error("expected full backup when remote has only incrementals, no full backup")
 		}
 	})
@@ -382,7 +383,7 @@ func TestNeedsFullBackup(t *testing.T) {
 
 		oldSnap := fmt.Sprintf("/snapshots/btrfs-backup-%s", oldTime.Format("2006-01-02_15-04-05"))
 
-		if !needsFullBackup(cfg, vol, oldSnap, time.Now()) {
+		if !needsFullBackup(context.Background(), cfg, vol, oldSnap, time.Now()) {
 			t.Error("expected full backup when last full too old")
 		}
 	})
@@ -413,7 +414,7 @@ func TestNeedsFullBackup(t *testing.T) {
 		lastIncTime := baseTime.Add(3 * time.Hour)
 		oldSnap := fmt.Sprintf("/snapshots/btrfs-backup-%s", lastIncTime.Format("2006-01-02_15-04-05"))
 
-		if !needsFullBackup(cfg, vol, oldSnap, time.Now()) {
+		if !needsFullBackup(context.Background(), cfg, vol, oldSnap, time.Now()) {
 			t.Error("expected full backup when too many incrementals")
 		}
 	})
@@ -442,7 +443,7 @@ func TestNeedsFullBackup(t *testing.T) {
 
 		oldSnap := fmt.Sprintf("/snapshots/btrfs-backup-%s", incTime.Format("2006-01-02_15-04-05"))
 
-		if needsFullBackup(cfg, vol, oldSnap, time.Now()) {
+		if needsFullBackup(context.Background(), cfg, vol, oldSnap, time.Now()) {
 			t.Error("expected incremental backup to be ok")
 		}
 	})
@@ -493,7 +494,7 @@ func TestCheckBtrfsAccess(t *testing.T) {
 		Src:  "/mnt/vol",
 	}
 
-	err := checkBtrfsAccess(vol)
+	err := checkBtrfsAccess(context.Background(), vol)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -516,7 +517,7 @@ func TestCheckBtrfsAccessError(t *testing.T) {
 		Src:  "/mnt/vol",
 	}
 
-	err := checkBtrfsAccess(vol)
+	err := checkBtrfsAccess(context.Background(), vol)
 	if err == nil {
 		t.Fatal("expected error from checkBtrfsAccess")
 	}

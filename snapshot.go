@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -31,11 +32,11 @@ func latestSnapshot(snapDir string) (string, error) {
 	return filepath.Join(snapDir, names[0]), nil
 }
 
-func createSnapshot(src, snapDir string, currentTime time.Time) (string, error) {
+func createSnapshot(ctx context.Context, src, snapDir string, currentTime time.Time) (string, error) {
 	name := fmt.Sprintf("btrfs-backup-%s", currentTime.Format("2006-01-02_15-04-05"))
 	path := filepath.Join(snapDir, name)
 
-	createCmd := exec.Command("btrfs", "subvolume", "snapshot", "-r", src, path)
+	createCmd := exec.CommandContext(ctx, "btrfs", "subvolume", "snapshot", "-r", src, path)
 
 	if dryRun {
 		if veryVerbose {
@@ -47,8 +48,8 @@ func createSnapshot(src, snapDir string, currentTime time.Time) (string, error) 
 	return path, createCmd.Run()
 }
 
-func checkBtrfsAccess(vol *Volume) error {
-	cmd := exec.Command("btrfs", "subvolume", "list", vol.Src)
+func checkBtrfsAccess(ctx context.Context, vol *Volume) error {
+	cmd := exec.CommandContext(ctx, "btrfs", "subvolume", "list", vol.Src)
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error accessing btrfs subvolume at %s: %v", vol.Src, err)
@@ -56,8 +57,8 @@ func checkBtrfsAccess(vol *Volume) error {
 	return nil
 }
 
-func deleteOldSnapshot(snapshot string) {
-	delCmd := exec.Command("btrfs", "subvolume", "delete", snapshot)
+func deleteOldSnapshot(ctx context.Context, snapshot string) {
+	delCmd := exec.CommandContext(ctx, "btrfs", "subvolume", "delete", snapshot)
 
 	if verbose {
 		fmt.Printf("→ Deleting old local snapshot: %s\n", snapshot)
