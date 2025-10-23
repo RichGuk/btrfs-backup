@@ -84,7 +84,7 @@ func sendSnapshot(ctx context.Context, cfg *Config, newSnap, oldSnap, outfile st
 	}
 
 	sendCmd := exec.CommandContext(ctx, "btrfs", sendArgs...)
-	sendCmd.Stderr = os.Stderr
+	sendCmd.Stderr = io.Discard
 	stdout, err := sendCmd.StdoutPipe()
 	if err != nil {
 		return "", err

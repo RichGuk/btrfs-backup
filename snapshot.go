@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,6 +38,8 @@ func createSnapshot(ctx context.Context, src, snapDir string, currentTime time.T
 	path := filepath.Join(snapDir, name)
 
 	createCmd := exec.CommandContext(ctx, "btrfs", "subvolume", "snapshot", "-r", src, path)
+	createCmd.Stdout = io.Discard
+	createCmd.Stderr = os.Stderr
 
 	if dryRun {
 		if veryVerbose {
