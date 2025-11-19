@@ -27,6 +27,24 @@ func remoteFileSuffix(cfg *Config) string {
 	return ".btrfs"
 }
 
+func checkRemoteAccess(ctx context.Context, cfg *Config) error {
+	remoteCmd := fmt.Sprintf("test -d %s || mkdir -p %s",
+		shellEscape(cfg.RemoteDest),
+		shellEscape(cfg.RemoteDest))
+
+	cmd := exec.CommandContext(ctx, "ssh", buildSSHArgs(cfg, remoteCmd)...)
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to access remote host %s: %w (check SSH connectivity and permissions)", cfg.RemoteHost, err)
+	}
+
+	if verbose {
+		fmt.Printf("→ Remote host %s is accessible\n", cfg.RemoteHost)
+	}
+
+	return nil
+}
+
 func sendSnapshot(ctx context.Context, cfg *Config, newSnap, oldSnap, outfile string, full bool) (checksum string, err error) {
 	ok := false
 

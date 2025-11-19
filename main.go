@@ -84,6 +84,13 @@ func main() {
 		}
 	}
 
+	if !dryRun {
+		if err := checkRemoteAccess(ctx, cfg); err != nil {
+			errLog.Printf("Error accessing remote host: %v", err)
+			os.Exit(1)
+		}
+	}
+
 	for _, vol := range cfg.Volumes {
 		if verbose {
 			fmt.Printf(color.YellowString("Processing volume: %s (src: %s, snapdir: %s)\n"), vol.Name, vol.Src, vol.SnapDir)
