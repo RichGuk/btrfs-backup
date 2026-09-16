@@ -36,11 +36,15 @@ func TestNewDestinationPicksLocalWithoutRemoteHost(t *testing.T) {
 	}
 }
 
-func TestLocalPrepareCreatesDirectory(t *testing.T) {
+func TestLocalPrepareCreatesDirectoryWhenConfirmed(t *testing.T) {
+	withPromptAnswers(t, "y")
+
 	dir := filepath.Join(t.TempDir(), "nested", "backups")
 	dest := &localDestination{dir: dir}
 
-	if err := dest.Prepare(context.Background()); err != nil {
+	var err error
+	captureStdout(t, func() { err = dest.Prepare(context.Background()) })
+	if err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
 
@@ -58,6 +62,62 @@ func TestLocalPrepareCreatesDirectory(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("expected write check file to be cleaned up, got %v", entries)
+	}
+}
+
+func TestLocalPrepareLeavesDirectoryAloneWhenDeclined(t *testing.T) {
+	withPromptAnswers(t, "n")
+
+	dir := filepath.Join(t.TempDir(), "backups")
+
+	var err error
+	captureStdout(t, func() { err = (&localDestination{dir: dir}).Prepare(context.Background()) })
+	if err == nil {
+		t.Fatal("expected Prepare to fail when the user declines")
+	}
+
+	if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
+		t.Fatalf("expected %s not to be created, stat returned %v", dir, statErr)
+	}
+}
+
+// Under cron there is nobody to ask, so a missing destination has to be an
+// error rather than a directory quietly appearing in the wrong place.
+func TestLocalPrepareWithoutTerminalFails(t *testing.T) {
+	withoutTerminal(t)
+
+	dir := filepath.Join(t.TempDir(), "backups")
+
+	err := (&localDestination{dir: dir}).Prepare(context.Background())
+	if err == nil {
+		t.Fatal("expected Prepare to fail without a terminal")
+	}
+	if !strings.Contains(err.Error(), "from a terminal") {
+		t.Fatalf("expected the error to explain how to create it, got %v", err)
+	}
+
+	if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
+		t.Fatalf("expected %s not to be created, stat returned %v", dir, statErr)
+	}
+}
+
+func TestLocalPrepareDryRunOnlyReports(t *testing.T) {
+	withDryRun(t)
+	withPromptAnswers(t, "y")
+
+	dir := filepath.Join(t.TempDir(), "backups")
+
+	var err error
+	output := captureStdout(t, func() { err = (&localDestination{dir: dir}).Prepare(context.Background()) })
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if !strings.Contains(output, "[DRY-RUN]") {
+		t.Fatalf("expected a dry-run notice, got %q", output)
+	}
+
+	if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
+		t.Fatalf("expected %s not to be created, stat returned %v", dir, statErr)
 	}
 }
 

@@ -53,15 +53,49 @@ func (d *sshDestination) run(ctx context.Context, remoteCmd string) error {
 	return cmd.Run()
 }
 
-func (d *sshDestination) Prepare(ctx context.Context) error {
-	remoteCmd := fmt.Sprintf("test -d %s || mkdir -p %s",
-		shellEscape(d.cfg.Dest),
-		shellEscape(d.cfg.Dest))
+// dirState reports whether the destination directory on the remote host is a
+// directory ("dir"), something else ("notdir") or absent ("missing"). Every
+// outcome is reported on stdout so a non-zero exit means the SSH connection
+// itself failed, not that the directory is missing.
+func (d *sshDestination) dirState(ctx context.Context) (string, error) {
+	dest := shellEscape(d.cfg.Dest)
+	remoteCmd := fmt.Sprintf("if [ -d %[1]s ]; then echo dir; elif [ -e %[1]s ]; then echo notdir; else echo missing; fi", dest)
 
 	cmd := exec.CommandContext(ctx, "ssh", buildSSHArgs(d.cfg, remoteCmd)...)
+	cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
+
+func (d *sshDestination) Prepare(ctx context.Context) error {
+	state, err := d.dirState(ctx)
+	if err != nil {
 		return fmt.Errorf("failed to access remote host %s: %w (check SSH connectivity and permissions)", d.cfg.RemoteHost, err)
+	}
+
+	switch state {
+	case "notdir":
+		return fmt.Errorf("remote destination %s exists but is not a directory", d.Path(""))
+	case "missing":
+		create, err := confirmMissingDir("Remote destination", d.Path(""))
+		if err != nil {
+			return err
+		}
+		if !create {
+			return nil
+		}
+
+		if err := d.run(ctx, fmt.Sprintf("mkdir -p %s", shellEscape(d.cfg.Dest))); err != nil {
+			return fmt.Errorf("failed to create remote destination %s: %w", d.Path(""), err)
+		}
+		if verbose {
+			fmt.Printf("→ Created remote destination %s\n", d.Path(""))
+		}
 	}
 
 	if verbose {

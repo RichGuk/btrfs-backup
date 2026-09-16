@@ -119,8 +119,31 @@ Two things to know:
 - Setting `ssh_key` without `remote_host` is an error, rather than silently
   writing to a local path you didn't mean.
 
-If `dest` doesn't exist, it's created (`mkdir -p`), and it's checked for
-writability before any snapshot is sent.
+A local `dest` is also checked for writability before any snapshot is sent.
+
+### Missing Directories
+
+Nothing is created behind your back. If `dest` (local or remote) or a volume's
+`snapdir` doesn't exist, `btrfs-backup` says so and offers to create it:
+
+```
+Destination /mnt/backup-drive does not exist. Create it? [Y/n]
+
+Snapshot directory /.snapshots/btrfs-backup for volume root does not exist. Create it as:
+  s) btrfs subvolume (recommended)
+  d) plain directory
+  n) do not create it
+Choice [S/d/n]
+```
+
+A snapshot directory is worth making a subvolume of its own: it then stays out
+of any snapshot taken of its parent, and can be managed separately.
+
+With no terminal attached — from cron, say — there's nobody to ask, so the run
+stops with an error naming the missing path instead. That way a typo in `dest`
+can't silently start filling up a directory tree you never meant to write to.
+Create the path once by hand (or by running `btrfs-backup` from a terminal) and
+scheduled runs carry on as normal.
 
 ### Generating an age Key
 
@@ -216,14 +239,16 @@ To keep storage manageable while maintaining restore capability:
 
 ### Backup Workflow
 
-1. **Create snapshot**: `btrfs subvolume snapshot -r <src> <snapdir>/<timestamp>`
-2. **Determine backup type**: Check if full or incremental is needed
-3. **Send to the destination**:
+1. **Check paths**: The destination and every `snapdir` must exist, or you're
+   offered the chance to create them
+2. **Create snapshot**: `btrfs subvolume snapshot -r <src> <snapdir>/<timestamp>`
+3. **Determine backup type**: Check if full or incremental is needed
+4. **Send to the destination**:
    - `btrfs send` (with `-p` for incremental)
    - Optional `age` encryption
    - Stream over SSH, or write straight to a local directory
-4. **Verify**: Calculate and verify SHA256 checksum
-5. **Cleanup**: Delete old snapshots locally, old backups at the destination (if full backup)
+5. **Verify**: Calculate and verify SHA256 checksum
+6. **Cleanup**: Delete old snapshots locally, old backups at the destination (if full backup)
 
 Every transfer is staged as `<filename>.tmp` and only renamed to its real name
 once the checksum matches, so an interrupted run can never leave behind a file

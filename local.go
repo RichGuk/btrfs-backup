@@ -30,11 +30,26 @@ func (d *localDestination) Prepare(ctx context.Context) error {
 		return fmt.Errorf("destination %s exists but is not a directory", d.dir)
 	case err == nil:
 	case errors.Is(err, os.ErrNotExist):
+		create, err := confirmMissingDir("Destination", d.dir)
+		if err != nil {
+			return err
+		}
+		if !create {
+			// Dry run: nothing exists to probe for writability.
+			return nil
+		}
 		if err := os.MkdirAll(d.dir, 0o755); err != nil {
 			return fmt.Errorf("failed to create destination %s: %w", d.dir, err)
 		}
+		if verbose {
+			fmt.Printf("→ Created destination %s\n", d.dir)
+		}
 	default:
 		return fmt.Errorf("failed to access destination %s: %w", d.dir, err)
+	}
+
+	if dryRun {
+		return nil
 	}
 
 	// Stat says nothing about whether we can write, and finding out at the end

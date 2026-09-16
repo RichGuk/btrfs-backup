@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -39,6 +41,47 @@ func captureStdout(t *testing.T, fn func()) string {
 	reader.Close()
 
 	return output
+}
+
+// withPromptAnswers makes prompts behave as though someone were sat at a
+// terminal typing the given answers, one per question. These are package
+// globals, so tests using it cannot run in parallel.
+func withPromptAnswers(t *testing.T, answers ...string) {
+	t.Helper()
+
+	previousInteractive, previousReader := isInteractive, promptReader
+	t.Cleanup(func() {
+		isInteractive, promptReader = previousInteractive, previousReader
+	})
+
+	isInteractive = func() bool { return true }
+
+	var typed strings.Builder
+	for _, answer := range answers {
+		typed.WriteString(answer + "\n")
+	}
+	promptReader = bufio.NewReader(strings.NewReader(typed.String()))
+}
+
+// withoutTerminal makes prompts behave as they do under cron: there is nobody
+// to ask.
+func withoutTerminal(t *testing.T) {
+	t.Helper()
+
+	previous := isInteractive
+	t.Cleanup(func() { isInteractive = previous })
+
+	isInteractive = func() bool { return false }
+}
+
+// withDryRun turns on dry-run mode for the duration of a test.
+func withDryRun(t *testing.T) {
+	t.Helper()
+
+	previous := dryRun
+	t.Cleanup(func() { dryRun = previous })
+
+	dryRun = true
 }
 
 // mustParseTime parses a snapshot-format timestamp, so tests can pin "now"
@@ -136,6 +179,18 @@ subvolume)
 		fi
 		rm -rf "$dest"
 		mkdir -p "$dest"
+		exit 0
+	fi
+
+	if [ "$2" = "create" ]; then
+		target="$3"
+		if [ -n "$log" ]; then
+			printf "create %s\n" "$target" >> "$log"
+		fi
+		if [ "${BTRFS_FAIL_CREATE:-0}" -ne 0 ]; then
+			exit 1
+		fi
+		mkdir -p "$target"
 		exit 0
 	fi
 

@@ -10,6 +10,97 @@ import (
 	"testing"
 )
 
+func TestSSHPrepareAcceptsExistingDirectory(t *testing.T) {
+	withoutTerminal(t)
+	_, remoteDir := setupTestEnv(t)
+
+	cfg := &Config{RemoteHost: "remote", Dest: remoteDir}
+
+	if err := newDestination(cfg).Prepare(context.Background()); err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+}
+
+func TestSSHPrepareCreatesDirectoryWhenConfirmed(t *testing.T) {
+	withPromptAnswers(t, "y")
+	_, remoteDir := setupTestEnv(t)
+
+	dest := filepath.Join(remoteDir, "nested", "backups")
+	cfg := &Config{RemoteHost: "remote", Dest: dest}
+
+	var err error
+	captureStdout(t, func() { err = newDestination(cfg).Prepare(context.Background()) })
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+
+	info, statErr := os.Stat(dest)
+	if statErr != nil {
+		t.Fatalf("stat remote dest: %v", statErr)
+	}
+	if !info.IsDir() {
+		t.Fatal("expected remote dest to be a directory")
+	}
+}
+
+func TestSSHPrepareLeavesDirectoryAloneWhenDeclined(t *testing.T) {
+	withPromptAnswers(t, "n")
+	_, remoteDir := setupTestEnv(t)
+
+	dest := filepath.Join(remoteDir, "backups")
+	cfg := &Config{RemoteHost: "remote", Dest: dest}
+
+	var err error
+	captureStdout(t, func() { err = newDestination(cfg).Prepare(context.Background()) })
+	if err == nil {
+		t.Fatal("expected Prepare to fail when the user declines")
+	}
+
+	if _, statErr := os.Stat(dest); !os.IsNotExist(statErr) {
+		t.Fatalf("expected %s not to be created, stat returned %v", dest, statErr)
+	}
+}
+
+func TestSSHPrepareWithoutTerminalFails(t *testing.T) {
+	withoutTerminal(t)
+	_, remoteDir := setupTestEnv(t)
+
+	dest := filepath.Join(remoteDir, "backups")
+	cfg := &Config{RemoteHost: "remote", Dest: dest}
+
+	err := newDestination(cfg).Prepare(context.Background())
+	if err == nil {
+		t.Fatal("expected Prepare to fail without a terminal")
+	}
+	if !strings.Contains(err.Error(), "from a terminal") {
+		t.Fatalf("expected the error to explain how to create it, got %v", err)
+	}
+
+	if _, statErr := os.Stat(dest); !os.IsNotExist(statErr) {
+		t.Fatalf("expected %s not to be created, stat returned %v", dest, statErr)
+	}
+}
+
+func TestSSHPrepareRejectsNonDirectory(t *testing.T) {
+	withoutTerminal(t)
+	_, remoteDir := setupTestEnv(t)
+
+	dest := filepath.Join(remoteDir, "not-a-dir")
+	if err := os.WriteFile(dest, []byte("data"), 0o644); err != nil {
+		t.Fatalf("writing file: %v", err)
+	}
+
+	cfg := &Config{RemoteHost: "remote", Dest: dest}
+
+	err := newDestination(cfg).Prepare(context.Background())
+	if err == nil {
+		t.Fatal("expected Prepare to fail when the remote dest is a file")
+	}
+	if !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("expected 'not a directory' error, got %v", err)
+	}
+}
+
 func TestSSHFinaliseRenamesWithoutChecksum(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
 

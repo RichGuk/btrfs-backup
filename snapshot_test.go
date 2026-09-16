@@ -62,6 +62,175 @@ func TestLatestSnapshot(t *testing.T) {
 	})
 }
 
+func TestEnsureSnapDirAcceptsExistingDirectory(t *testing.T) {
+	withoutTerminal(t)
+
+	vol := &Volume{Name: "root", SnapDir: t.TempDir()}
+
+	if err := ensureSnapDir(context.Background(), vol); err != nil {
+		t.Fatalf("ensureSnapDir: %v", err)
+	}
+}
+
+func TestEnsureSnapDirCreatesSubvolume(t *testing.T) {
+	setupTestEnv(t)
+	withPromptAnswers(t, "s")
+
+	logPath := filepath.Join(t.TempDir(), "btrfs.log")
+	t.Setenv("BTRFS_LOG", logPath)
+
+	snapDir := filepath.Join(t.TempDir(), "nested", "snapshots")
+	vol := &Volume{Name: "root", SnapDir: snapDir}
+
+	var err error
+	captureStdout(t, func() { err = ensureSnapDir(context.Background(), vol) })
+	if err != nil {
+		t.Fatalf("ensureSnapDir: %v", err)
+	}
+
+	if _, statErr := os.Stat(snapDir); statErr != nil {
+		t.Fatalf("expected snapshot dir to exist: %v", statErr)
+	}
+
+	logData, readErr := os.ReadFile(logPath)
+	if readErr != nil {
+		t.Fatalf("reading btrfs log: %v", readErr)
+	}
+	if !strings.Contains(string(logData), fmt.Sprintf("create %s\n", snapDir)) {
+		t.Fatalf("expected a subvolume create log entry, got %q", string(logData))
+	}
+}
+
+// Enter picks the default, which is a subvolume.
+func TestEnsureSnapDirDefaultsToSubvolume(t *testing.T) {
+	setupTestEnv(t)
+	withPromptAnswers(t, "")
+
+	logPath := filepath.Join(t.TempDir(), "btrfs.log")
+	t.Setenv("BTRFS_LOG", logPath)
+
+	snapDir := filepath.Join(t.TempDir(), "snapshots")
+	vol := &Volume{Name: "root", SnapDir: snapDir}
+
+	var err error
+	captureStdout(t, func() { err = ensureSnapDir(context.Background(), vol) })
+	if err != nil {
+		t.Fatalf("ensureSnapDir: %v", err)
+	}
+
+	logData, readErr := os.ReadFile(logPath)
+	if readErr != nil {
+		t.Fatalf("reading btrfs log: %v", readErr)
+	}
+	if !strings.Contains(string(logData), fmt.Sprintf("create %s\n", snapDir)) {
+		t.Fatalf("expected a subvolume create log entry, got %q", string(logData))
+	}
+}
+
+func TestEnsureSnapDirCreatesPlainDirectory(t *testing.T) {
+	setupTestEnv(t)
+	withPromptAnswers(t, "d")
+
+	logPath := filepath.Join(t.TempDir(), "btrfs.log")
+	t.Setenv("BTRFS_LOG", logPath)
+
+	snapDir := filepath.Join(t.TempDir(), "nested", "snapshots")
+	vol := &Volume{Name: "root", SnapDir: snapDir}
+
+	var err error
+	captureStdout(t, func() { err = ensureSnapDir(context.Background(), vol) })
+	if err != nil {
+		t.Fatalf("ensureSnapDir: %v", err)
+	}
+
+	info, statErr := os.Stat(snapDir)
+	if statErr != nil {
+		t.Fatalf("expected snapshot dir to exist: %v", statErr)
+	}
+	if !info.IsDir() {
+		t.Fatal("expected snapshot dir to be a directory")
+	}
+
+	if _, readErr := os.ReadFile(logPath); !os.IsNotExist(readErr) {
+		t.Fatalf("expected btrfs not to be called, log read returned %v", readErr)
+	}
+}
+
+func TestEnsureSnapDirDeclined(t *testing.T) {
+	setupTestEnv(t)
+	withPromptAnswers(t, "n")
+
+	snapDir := filepath.Join(t.TempDir(), "snapshots")
+	vol := &Volume{Name: "root", SnapDir: snapDir}
+
+	var err error
+	captureStdout(t, func() { err = ensureSnapDir(context.Background(), vol) })
+	if err == nil {
+		t.Fatal("expected ensureSnapDir to fail when the user declines")
+	}
+
+	if _, statErr := os.Stat(snapDir); !os.IsNotExist(statErr) {
+		t.Fatalf("expected %s not to be created, stat returned %v", snapDir, statErr)
+	}
+}
+
+func TestEnsureSnapDirWithoutTerminalFails(t *testing.T) {
+	withoutTerminal(t)
+
+	snapDir := filepath.Join(t.TempDir(), "snapshots")
+	vol := &Volume{Name: "root", SnapDir: snapDir}
+
+	err := ensureSnapDir(context.Background(), vol)
+	if err == nil {
+		t.Fatal("expected ensureSnapDir to fail without a terminal")
+	}
+	if !strings.Contains(err.Error(), "btrfs subvolume create") {
+		t.Fatalf("expected the error to say how to create it, got %v", err)
+	}
+
+	if _, statErr := os.Stat(snapDir); !os.IsNotExist(statErr) {
+		t.Fatalf("expected %s not to be created, stat returned %v", snapDir, statErr)
+	}
+}
+
+func TestEnsureSnapDirRejectsNonDirectory(t *testing.T) {
+	withoutTerminal(t)
+
+	snapDir := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(snapDir, []byte("data"), 0o644); err != nil {
+		t.Fatalf("writing file: %v", err)
+	}
+
+	err := ensureSnapDir(context.Background(), &Volume{Name: "root", SnapDir: snapDir})
+	if err == nil {
+		t.Fatal("expected ensureSnapDir to fail when snapdir is a file")
+	}
+	if !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("expected 'not a directory' error, got %v", err)
+	}
+}
+
+func TestEnsureSnapDirDryRunOnlyReports(t *testing.T) {
+	withDryRun(t)
+	withPromptAnswers(t, "s")
+
+	snapDir := filepath.Join(t.TempDir(), "snapshots")
+	vol := &Volume{Name: "root", SnapDir: snapDir}
+
+	var err error
+	output := captureStdout(t, func() { err = ensureSnapDir(context.Background(), vol) })
+	if err != nil {
+		t.Fatalf("ensureSnapDir: %v", err)
+	}
+	if !strings.Contains(output, "[DRY-RUN]") {
+		t.Fatalf("expected a dry-run notice, got %q", output)
+	}
+
+	if _, statErr := os.Stat(snapDir); !os.IsNotExist(statErr) {
+		t.Fatalf("expected %s not to be created, stat returned %v", snapDir, statErr)
+	}
+}
+
 func TestCreateSnapshot(t *testing.T) {
 	setupTestEnv(t)
 

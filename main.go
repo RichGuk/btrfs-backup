@@ -87,13 +87,16 @@ func main() {
 				os.Exit(1)
 			}
 		}
-	}
 
-	if !dryRun {
-		if err := dest.Prepare(ctx); err != nil {
-			errLog.Printf("Error accessing backup destination: %v", err)
+		if err := ensureSnapDir(ctx, &vol); err != nil {
+			errLog.Printf("Error accessing snapshot directory: %v", err)
 			os.Exit(1)
 		}
+	}
+
+	if err := dest.Prepare(ctx); err != nil {
+		errLog.Printf("Error accessing backup destination: %v", err)
+		os.Exit(1)
 	}
 
 	for _, vol := range cfg.Volumes {
