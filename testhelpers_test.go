@@ -1,11 +1,57 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+// captureStdout swaps os.Stdout for a pipe while fn runs, so tests can assert on
+// output written with fmt.Printf.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("creating pipe: %v", err)
+	}
+
+	previous := os.Stdout
+	os.Stdout = writer
+	defer func() { os.Stdout = previous }()
+
+	// Drain concurrently, or a preview larger than the pipe buffer would block.
+	captured := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, reader)
+		captured <- buf.String()
+	}()
+
+	fn()
+
+	writer.Close()
+	output := <-captured
+	reader.Close()
+
+	return output
+}
+
+// mustParseTime parses a snapshot-format timestamp, so tests can pin "now"
+// instead of depending on the wall clock.
+func mustParseTime(t *testing.T, value string) time.Time {
+	t.Helper()
+
+	ts, err := time.Parse(snapshotTimestampFormat, value)
+	if err != nil {
+		t.Fatalf("parsing %q: %v", value, err)
+	}
+	return ts
+}
 
 func setupTestEnv(t *testing.T) (binDir, remoteDir string) {
 	t.Helper()

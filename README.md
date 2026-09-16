@@ -10,10 +10,10 @@ promises on feature requests. 😊
 
 ## What It Does
 
-`btrfs-backup` creates read-only BTRFS snapshots of your subvolumes and sends
-them to a remote host via SSH. It handles both full and incremental backups,
-with optional age encryption, SHA256 checksum verification, and automatic
-cleanup of old backups.
+`btrfs-backup` creates read-only BTRFS snapshots of your subvolumes and writes
+them either to a remote host via SSH or to a directory on the local machine. It
+handles both full and incremental backups, with optional age encryption, SHA256
+checksum verification, and automatic cleanup of old backups.
 
 Locally, I only ever keep one snapshot. On the remote server, you can configure
 your retention. I keep a week's worth of incremental backups and do a full backup
@@ -62,7 +62,7 @@ Create `/etc/btrfs-backup.yaml` with your settings:
 # SSH configuration
 ssh_key: /root/.ssh/id_ed25519
 remote_host: backup@backup-server.example.com
-remote_dest: /data/backups
+dest: /data/backups
 
 # Backup policy
 max_age_days: 7          # Force full backup after this many days
@@ -80,6 +80,47 @@ volumes:
     src: /home
     snapdir: /home/.snapshots/btrfs-backup
 ```
+
+### Local Destinations
+
+`dest` is just a directory. Leave `remote_host` and `ssh_key` out and it's
+treated as a path on this machine — an external drive, a NAS mount, another
+filesystem, whatever:
+
+```yaml
+dest: /mnt/backup-drive
+
+max_age_days: 7
+max_incrementals: 5
+
+volumes:
+  - name: root
+    src: /
+    snapdir: /.snapshots/btrfs-backup
+```
+
+Everything else behaves identically: same filenames, same `.sha256` sidecars,
+same retention rules, same optional age encryption. The only difference is how
+the verification checksum is produced. Over SSH, the remote end hashes the
+stream as it lands, which proves the bytes survived the network. Locally there
+is no network, so the finished file is read back off disk and hashed — the
+re-read is cheap on local storage in a way it would never be over SSH.
+
+Note that a local destination gets raw `btrfs send` images, exactly like a
+remote one — it does **not** `btrfs receive` into a subvolume, even when the
+destination is itself BTRFS. That's deliberate: storing images is what lets the
+destination be an ext4 USB drive, a NAS mount, or anything else. If you want
+real subvolumes on a BTRFS target, snapper and btrbk already do that well.
+
+Two things to know:
+
+- `dest` was called `remote_dest` before local destinations existed. That name
+  still works, but set one or the other, not both.
+- Setting `ssh_key` without `remote_host` is an error, rather than silently
+  writing to a local path you didn't mean.
+
+If `dest` doesn't exist, it's created (`mkdir -p`), and it's checked for
+writability before any snapshot is sent.
 
 ### Generating an age Key
 
@@ -177,12 +218,16 @@ To keep storage manageable while maintaining restore capability:
 
 1. **Create snapshot**: `btrfs subvolume snapshot -r <src> <snapdir>/<timestamp>`
 2. **Determine backup type**: Check if full or incremental is needed
-3. **Send to remote**: 
+3. **Send to the destination**:
    - `btrfs send` (with `-p` for incremental)
    - Optional `age` encryption
-   - Stream to remote via SSH
+   - Stream over SSH, or write straight to a local directory
 4. **Verify**: Calculate and verify SHA256 checksum
-5. **Cleanup**: Delete old snapshots locally, old backups remotely (if full backup)
+5. **Cleanup**: Delete old snapshots locally, old backups at the destination (if full backup)
+
+Every transfer is staged as `<filename>.tmp` and only renamed to its real name
+once the checksum matches, so an interrupted run can never leave behind a file
+that looks like a usable backup.
 
 ## Backup Naming Convention
 
@@ -229,7 +274,7 @@ go test -v
 ## Limitations & Known Issues
 
 - **No automatic restore**: You'll need to manually restore backups (for now)
-- **SSH only**: No support for local or cloud storage backends
+- **SSH or local paths only**: No cloud storage backends
 - **Linux only**: Requires BTRFS and Linux-specific syscalls
 - **Root required**: Needs root for BTRFS operations and lock file location
 - **Lock file path**: Hardcoded to `/var/run/btrfs-backup.lock`

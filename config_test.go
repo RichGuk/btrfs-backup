@@ -218,3 +218,118 @@ volumes:
 		t.Errorf("expected empty EncryptionKey, got '%s'", cfg.EncryptionKey)
 	}
 }
+
+func TestLoadConfigDestKey(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+
+	configContent := `dest: /mnt/backups
+
+volumes:
+  - name: root
+    src: /@
+    snapdir: /.snapshots
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	cfg, err := loadConfig(configPath)
+	if err != nil {
+		t.Fatalf("loadConfig failed: %v", err)
+	}
+
+	if cfg.Dest != "/mnt/backups" {
+		t.Errorf("expected Dest '/mnt/backups', got '%s'", cfg.Dest)
+	}
+
+	if !cfg.IsLocal() {
+		t.Error("expected a config without remote_host to be local")
+	}
+}
+
+func TestLoadConfigRemoteDestPopulatesDest(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+
+	configContent := `remote_host: backup@example.com
+remote_dest: /data/backups
+volumes: []
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	cfg, err := loadConfig(configPath)
+	if err != nil {
+		t.Fatalf("loadConfig failed: %v", err)
+	}
+
+	if cfg.Dest != "/data/backups" {
+		t.Errorf("expected remote_dest to populate Dest, got '%s'", cfg.Dest)
+	}
+
+	if cfg.IsLocal() {
+		t.Error("expected a config with remote_host to not be local")
+	}
+}
+
+func TestLoadConfigRejectsBothDestKeys(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+
+	configContent := `dest: /mnt/backups
+remote_dest: /data/backups
+volumes: []
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	_, err := loadConfig(configPath)
+	if err == nil {
+		t.Fatal("expected loadConfig to reject both dest and remote_dest")
+	}
+}
+
+func TestLoadConfigRejectsMissingDest(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+
+	configContent := `remote_host: backup@example.com
+volumes: []
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	_, err := loadConfig(configPath)
+	if err == nil {
+		t.Fatal("expected loadConfig to reject a config with no destination")
+	}
+}
+
+// An ssh_key with no remote_host almost certainly means remote_host was meant
+// to be set, so fail rather than silently backing up to a local path.
+func TestLoadConfigRejectsSSHKeyWithoutRemoteHost(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+
+	configContent := `ssh_key: /root/.ssh/id_ed25519
+dest: /mnt/backups
+volumes: []
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	_, err := loadConfig(configPath)
+	if err == nil {
+		t.Fatal("expected loadConfig to reject ssh_key without remote_host")
+	}
+}

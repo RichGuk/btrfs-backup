@@ -1,6 +1,12 @@
+# Remote destination (backups are streamed over SSH)
 ssh_key: /root/.ssh/id_ed25519
 remote_host: backup@somehost.com
-remote_dest: /data/Backups
+dest: /data/Backups
+
+# Local destination: drop remote_host and ssh_key, and point dest at a path on
+# this machine (an external drive, a NAS mount, another filesystem).
+# dest: /mnt/backup-drive
+
 max_age_days: 7
 max_incrementals: 0
 # encryption_key: age1examplekeyvalue

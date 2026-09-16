@@ -10,12 +10,12 @@ import (
 	"testing"
 )
 
-func TestMoveTmpFileRenamesWithoutChecksum(t *testing.T) {
+func TestSSHFinaliseRenamesWithoutChecksum(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
 
 	cfg := &Config{
 		RemoteHost: "remote",
-		RemoteDest: remoteDir,
+		Dest:       remoteDir,
 	}
 
 	outfile := "volume-full.btrfs"
@@ -25,8 +25,8 @@ func TestMoveTmpFileRenamesWithoutChecksum(t *testing.T) {
 		t.Fatalf("writing tmp file: %v", err)
 	}
 
-	if err := moveTmpFile(context.Background(), cfg, outfile, ""); err != nil {
-		t.Fatalf("moveTmpFile: %v", err)
+	if err := newDestination(cfg).Finalise(context.Background(), outfile, ""); err != nil {
+		t.Fatalf("Finalise: %v", err)
 	}
 
 	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
@@ -46,12 +46,12 @@ func TestMoveTmpFileRenamesWithoutChecksum(t *testing.T) {
 	}
 }
 
-func TestMoveTmpFileWithChecksum(t *testing.T) {
+func TestSSHFinaliseWithChecksum(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
 
 	cfg := &Config{
 		RemoteHost: "remote",
-		RemoteDest: remoteDir,
+		Dest:       remoteDir,
 	}
 
 	outfile := "volume-inc.btrfs"
@@ -62,8 +62,8 @@ func TestMoveTmpFileWithChecksum(t *testing.T) {
 
 	checksum := fmt.Sprintf("%x", sha256.Sum256([]byte("content")))
 
-	if err := moveTmpFile(context.Background(), cfg, outfile, checksum); err != nil {
-		t.Fatalf("moveTmpFile: %v", err)
+	if err := newDestination(cfg).Finalise(context.Background(), outfile, checksum); err != nil {
+		t.Fatalf("Finalise: %v", err)
 	}
 
 	finalPath := filepath.Join(remoteDir, outfile)
@@ -91,12 +91,12 @@ func TestMoveTmpFileWithChecksum(t *testing.T) {
 	}
 }
 
-func TestRemoteBackupExists(t *testing.T) {
+func TestSSHExists(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
 
 	cfg := &Config{
 		RemoteHost: "remote",
-		RemoteDest: remoteDir,
+		Dest:       remoteDir,
 	}
 
 	outfile := "volume-full.btrfs"
@@ -105,11 +105,11 @@ func TestRemoteBackupExists(t *testing.T) {
 		t.Fatalf("writing remote file: %v", err)
 	}
 
-	if !remoteBackupExists(context.Background(), cfg, outfile) {
+	if !newDestination(cfg).Exists(context.Background(), outfile) {
 		t.Fatal("expected remote backup to exist")
 	}
 
-	if remoteBackupExists(context.Background(), cfg, "missing.btrfs") {
+	if newDestination(cfg).Exists(context.Background(), "missing.btrfs") {
 		t.Fatal("expected missing backup to return false")
 	}
 }
@@ -128,11 +128,11 @@ func TestSendSnapshotFull(t *testing.T) {
 
 	cfg := &Config{
 		RemoteHost: "remote",
-		RemoteDest: remoteDir,
+		Dest:       remoteDir,
 	}
 
 	outfile := "volume-full.btrfs"
-	checksum, err := sendSnapshot(context.Background(), cfg, newSnap, "", outfile, true)
+	checksum, err := sendSnapshot(context.Background(), cfg, newDestination(cfg), newSnap, "", outfile, true)
 	if err != nil {
 		t.Fatalf("sendSnapshot full: %v", err)
 	}
@@ -184,12 +184,12 @@ func TestSendSnapshotIncrementalWithEncryption(t *testing.T) {
 
 	cfg := &Config{
 		RemoteHost:    "remote",
-		RemoteDest:    remoteDir,
+		Dest:          remoteDir,
 		EncryptionKey: "age-recipient",
 	}
 
 	outfile := "volume-inc.btrfs.age"
-	checksum, err := sendSnapshot(context.Background(), cfg, newSnap, oldSnap, outfile, false)
+	checksum, err := sendSnapshot(context.Background(), cfg, newDestination(cfg), newSnap, oldSnap, outfile, false)
 	if err != nil {
 		t.Fatalf("sendSnapshot incremental: %v", err)
 	}
@@ -246,11 +246,11 @@ func TestSendSnapshotFailureCleansUpTempFile(t *testing.T) {
 
 	cfg := &Config{
 		RemoteHost: "remote",
-		RemoteDest: remoteDir,
+		Dest:       remoteDir,
 	}
 
 	outfile := "volume-fail.btrfs"
-	_, err := sendSnapshot(context.Background(), cfg, newSnap, "", outfile, true)
+	_, err := sendSnapshot(context.Background(), cfg, newDestination(cfg), newSnap, "", outfile, true)
 	if err == nil {
 		t.Fatal("expected sendSnapshot to fail, got nil error")
 	}
@@ -283,13 +283,13 @@ func TestSendSnapshotBtrfsSendStartFailure(t *testing.T) {
 
 	cfg := &Config{
 		RemoteHost: "remote",
-		RemoteDest: remoteDir,
+		Dest:       remoteDir,
 	}
 
 	newSnap := "/nonexistent/snapshot"
 	outfile := "volume-fail.btrfs"
 
-	_, err := sendSnapshot(context.Background(), cfg, newSnap, "", outfile, true)
+	_, err := sendSnapshot(context.Background(), cfg, newDestination(cfg), newSnap, "", outfile, true)
 	if err == nil {
 		t.Fatal("expected sendSnapshot to fail due to btrfs send start failure")
 	}
@@ -308,11 +308,11 @@ func TestSendSnapshotBtrfsSendWaitFailure(t *testing.T) {
 
 	cfg := &Config{
 		RemoteHost: "remote",
-		RemoteDest: remoteDir,
+		Dest:       remoteDir,
 	}
 
 	outfile := "volume-fail.btrfs"
-	_, err := sendSnapshot(context.Background(), cfg, newSnap, "", outfile, true)
+	_, err := sendSnapshot(context.Background(), cfg, newDestination(cfg), newSnap, "", outfile, true)
 	if err == nil {
 		t.Fatal("expected sendSnapshot to fail due to btrfs send wait failure")
 	}
@@ -339,7 +339,7 @@ func TestSendSnapshotAgeStartFailure(t *testing.T) {
 
 	cfg := &Config{
 		RemoteHost:    "remote",
-		RemoteDest:    remoteDir,
+		Dest:          remoteDir,
 		EncryptionKey: "test-key",
 	}
 
@@ -349,7 +349,7 @@ func TestSendSnapshotAgeStartFailure(t *testing.T) {
 	errLog.SetOutput(os.NewFile(0, os.DevNull))
 
 	outfile := "volume-fail.btrfs.age"
-	_, err := sendSnapshot(context.Background(), cfg, newSnap, "", outfile, true)
+	_, err := sendSnapshot(context.Background(), cfg, newDestination(cfg), newSnap, "", outfile, true)
 	if err == nil {
 		t.Fatal("expected sendSnapshot to fail due to age start failure")
 	}
@@ -368,12 +368,12 @@ func TestSendSnapshotAgeWaitFailure(t *testing.T) {
 
 	cfg := &Config{
 		RemoteHost:    "remote",
-		RemoteDest:    remoteDir,
+		Dest:          remoteDir,
 		EncryptionKey: "test-key",
 	}
 
 	outfile := "volume-fail.btrfs.age"
-	_, err := sendSnapshot(context.Background(), cfg, newSnap, "", outfile, true)
+	_, err := sendSnapshot(context.Background(), cfg, newDestination(cfg), newSnap, "", outfile, true)
 	if err == nil {
 		t.Fatal("expected sendSnapshot to fail due to age wait failure")
 	}
@@ -387,7 +387,7 @@ func TestCleanupOldBackups(t *testing.T) {
 
 	cfg := &Config{
 		RemoteHost: "remote",
-		RemoteDest: remoteDir,
+		Dest:       remoteDir,
 	}
 	vol := &Volume{Name: "root"}
 
@@ -409,7 +409,7 @@ func TestCleanupOldBackups(t *testing.T) {
 	createTestBackup("root-2024-01-05_10-00-00.inc.btrfs")
 	createTestBackup("root-2024-01-06_10-00-00.full.btrfs")
 
-	if err := cleanupOldBackups(context.Background(), cfg, vol, nil); err != nil {
+	if err := cleanupOldBackups(context.Background(), cfg, newDestination(cfg), vol, nil); err != nil {
 		t.Fatalf("cleanupOldBackups: %v", err)
 	}
 
@@ -445,11 +445,11 @@ func TestCleanupOldBackupsNoFullBackups(t *testing.T) {
 
 	cfg := &Config{
 		RemoteHost: "remote",
-		RemoteDest: remoteDir,
+		Dest:       remoteDir,
 	}
 	vol := &Volume{Name: "root"}
 
-	if err := cleanupOldBackups(context.Background(), cfg, vol, nil); err != nil {
+	if err := cleanupOldBackups(context.Background(), cfg, newDestination(cfg), vol, nil); err != nil {
 		t.Fatalf("cleanupOldBackups on empty dir: %v", err)
 	}
 }
@@ -459,7 +459,7 @@ func TestCleanupOldBackupsOnlyOneFull(t *testing.T) {
 
 	cfg := &Config{
 		RemoteHost: "remote",
-		RemoteDest: remoteDir,
+		Dest:       remoteDir,
 	}
 	vol := &Volume{Name: "root"}
 
@@ -473,7 +473,7 @@ func TestCleanupOldBackupsOnlyOneFull(t *testing.T) {
 	createTestBackup("root-2024-01-01_10-00-00.full.btrfs")
 	createTestBackup("root-2024-01-02_10-00-00.inc.btrfs")
 
-	if err := cleanupOldBackups(context.Background(), cfg, vol, nil); err != nil {
+	if err := cleanupOldBackups(context.Background(), cfg, newDestination(cfg), vol, nil); err != nil {
 		t.Fatalf("cleanupOldBackups: %v", err)
 	}
 

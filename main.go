@@ -73,6 +73,11 @@ func main() {
 	}
 
 	currentTime := time.Now()
+	dest := newDestination(cfg)
+
+	if verbose {
+		fmt.Printf("→ Destination: %s\n", dest.Path(""))
+	}
 
 	for _, vol := range cfg.Volumes {
 		if !dryRun {
@@ -85,8 +90,8 @@ func main() {
 	}
 
 	if !dryRun {
-		if err := checkRemoteAccess(ctx, cfg); err != nil {
-			errLog.Printf("Error accessing remote host: %v", err)
+		if err := dest.Prepare(ctx); err != nil {
+			errLog.Printf("Error accessing backup destination: %v", err)
 			os.Exit(1)
 		}
 	}
@@ -108,7 +113,7 @@ func main() {
 			if verbose {
 				fmt.Printf("→ Forcing full backup for %s\n", vol.Name)
 			}
-		} else if needsFullBackup(ctx, cfg, &vol, oldSnap, currentTime) {
+		} else if needsFullBackup(ctx, cfg, dest, &vol, oldSnap, currentTime) {
 			fullSnapshot = true
 			if verbose {
 				fmt.Printf("→ Doing full backup for %s\n", vol.Name)
@@ -121,10 +126,10 @@ func main() {
 		if fullSnapshot {
 			suffix = "full"
 		}
-		outfile := fmt.Sprintf("%s-%s.%s%s", vol.Name, currentTime.Format("2006-01-02_15-04-05"), suffix, remoteFileSuffix(cfg))
+		outfile := fmt.Sprintf("%s-%s.%s%s", vol.Name, currentTime.Format("2006-01-02_15-04-05"), suffix, backupFileSuffix(cfg))
 
-		if remoteBackupExists(ctx, cfg, outfile) {
-			color.Red("⚠️ Backup file %s already exists on remote, skipping volume %s\n", outfile, vol.Name)
+		if dest.Exists(ctx, outfile) {
+			color.Red("⚠️ Backup file %s already exists at destination, skipping volume %s\n", outfile, vol.Name)
 
 			if verbose || dryRun {
 				fmt.Print("\n\n")
@@ -138,14 +143,14 @@ func main() {
 			os.Exit(1)
 		}
 
-		checksum, err := sendSnapshot(ctx, cfg, newSnap, oldSnap, outfile, fullSnapshot)
+		checksum, err := sendSnapshot(ctx, cfg, dest, newSnap, oldSnap, outfile, fullSnapshot)
 		if err != nil {
 			errLog.Printf("Error sending snapshot: %v", err)
 			os.Exit(1)
 		}
 
-		if err := moveTmpFile(ctx, cfg, outfile, checksum); err != nil {
-			errLog.Printf("Error finalizing remote file: %v", err)
+		if err := dest.Finalise(ctx, outfile, checksum); err != nil {
+			errLog.Printf("Error finalizing backup file: %v", err)
 			os.Exit(1)
 		}
 
@@ -153,19 +158,19 @@ func main() {
 			fmt.Printf("→ SHA256: %s\n", checksum)
 		}
 
-		var newBackupForCleanup *remoteBackup
+		var newBackupForCleanup *backup
 		if dryRun {
 			kind := "inc"
 			if fullSnapshot {
 				kind = "full"
 			}
-			newBackupForCleanup = &remoteBackup{
+			newBackupForCleanup = &backup{
 				Name:      outfile,
 				Timestamp: currentTime,
 				Kind:      kind,
 			}
 		}
-		if err := cleanupOldBackups(ctx, cfg, &vol, newBackupForCleanup); err != nil {
+		if err := cleanupOldBackups(ctx, cfg, dest, &vol, newBackupForCleanup); err != nil {
 			errLog.Printf("Error cleaning up old backups: %v", err)
 		}
 
