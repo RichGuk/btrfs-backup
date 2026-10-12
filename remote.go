@@ -41,7 +41,12 @@ func (d *sshDestination) preview(remoteCmd string) string {
 func (d *sshDestination) teeCommand(name string) string {
 	// tee writes the file and sha256sum hashes it in the same pass, so the
 	// checksum reflects the bytes that actually reached the remote disk.
-	return fmt.Sprintf("tee %s | sha256sum", shellEscape(d.remotePath(name+tmpSuffix)))
+	//
+	// umask 077 because otherwise tee creates the file under whatever umask the
+	// remote login shell happens to have, typically leaving a world-readable
+	// image of an entire filesystem sat on the backup host. The later mv keeps
+	// the mode, so setting it here covers the finished backup too.
+	return fmt.Sprintf("umask 077; tee %s | sha256sum", shellEscape(d.remotePath(name+tmpSuffix)))
 }
 
 // run executes remoteCmd on the remote host, discarding its output.
@@ -90,7 +95,7 @@ func (d *sshDestination) Prepare(ctx context.Context) error {
 			return nil
 		}
 
-		if err := d.run(ctx, fmt.Sprintf("mkdir -p %s", shellEscape(d.cfg.Dest))); err != nil {
+		if err := d.run(ctx, fmt.Sprintf("mkdir -p -m 700 %s", shellEscape(d.cfg.Dest))); err != nil {
 			return fmt.Errorf("failed to create remote destination %s: %w", d.Path(""), err)
 		}
 		if verbose {
@@ -197,8 +202,10 @@ func (d *sshDestination) Finalise(ctx context.Context, name, checksum string) er
 		return nil
 	}
 
+	// Its own ssh call, so its own shell and its own umask: the one set in
+	// teeCommand does not carry over here.
 	checksumCmd := fmt.Sprintf(
-		"printf '%%s  %%s\\n' %s %s > %s",
+		"umask 077; printf '%%s  %%s\\n' %s %s > %s",
 		shellEscape(checksum),
 		shellEscape(name),
 		shellEscape(d.remotePath(name+".sha256")),

@@ -228,7 +228,7 @@ if [ -n "$log" ]; then
 	printf "%s\n" "$cmd" >> "$log"
 fi
 
-if printf "%s" "$cmd" | grep -q "^tee .* | sha256sum"; then
+if printf "%s" "$cmd" | grep -q "tee .* | sha256sum"; then
 	if [ "${SSH_FAIL_CAT:-0}" -ne 0 ]; then
 		exit 1
 	fi

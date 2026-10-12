@@ -199,6 +199,56 @@ func TestLocalReceiveTruncatesStaleTempFile(t *testing.T) {
 	}
 }
 
+// A backup image is a readable copy of an entire filesystem, so neither it nor
+// the directory holding it should be legible to other accounts on the machine.
+func TestLocalWritesArePrivate(t *testing.T) {
+	withPromptAnswers(t, "y")
+
+	dir := filepath.Join(t.TempDir(), "backups")
+	dest := &localDestination{dir: dir}
+
+	var err error
+	captureStdout(t, func() { err = dest.Prepare(context.Background()) })
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+
+	if mode := statMode(t, dir); mode != 0o700 {
+		t.Errorf("destination mode = %04o, want 0700", mode)
+	}
+
+	outfile := "volume-full.btrfs"
+	if _, err := dest.Receive(context.Background(), outfile, strings.NewReader("payload")); err != nil {
+		t.Fatalf("Receive: %v", err)
+	}
+
+	if mode := statMode(t, filepath.Join(dir, outfile+".tmp")); mode != 0o600 {
+		t.Errorf("in-flight backup mode = %04o, want 0600", mode)
+	}
+
+	if err := dest.Finalise(context.Background(), outfile, "abc123"); err != nil {
+		t.Fatalf("Finalise: %v", err)
+	}
+
+	if mode := statMode(t, filepath.Join(dir, outfile)); mode != 0o600 {
+		t.Errorf("finished backup mode = %04o, want 0600", mode)
+	}
+	if mode := statMode(t, filepath.Join(dir, outfile+".sha256")); mode != 0o600 {
+		t.Errorf("checksum sidecar mode = %04o, want 0600", mode)
+	}
+}
+
+func statMode(t *testing.T, path string) os.FileMode {
+	t.Helper()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+
+	return info.Mode().Perm()
+}
+
 func TestLocalFinaliseRenamesWithoutChecksum(t *testing.T) {
 	_, dest, dir := localTestDest(t)
 
@@ -637,7 +687,7 @@ func TestReceiveStagePreviews(t *testing.T) {
 
 	// The remote command must be quoted, or the preview reads as though
 	// sha256sum runs locally.
-	got, want := remote.ReceiveStage("vol.btrfs"), `| ssh user@host 'tee '\''/data/backups/vol.btrfs.tmp'\'' | sha256sum'`
+	got, want := remote.ReceiveStage("vol.btrfs"), `| ssh user@host 'umask 077; tee '\''/data/backups/vol.btrfs.tmp'\'' | sha256sum'`
 	if got != want {
 		t.Errorf("ssh ReceiveStage = %q, want %q", got, want)
 	}
@@ -668,7 +718,7 @@ func TestDryRunPreviewPipelineIsValidShell(t *testing.T) {
 		{
 			name: "ssh plain",
 			cfg:  &Config{RemoteHost: "user@host", Dest: "/data"},
-			want: `btrfs send /snap | ssh user@host 'tee '\''/data/vol.btrfs.tmp'\'' | sha256sum'`,
+			want: `btrfs send /snap | ssh user@host 'umask 077; tee '\''/data/vol.btrfs.tmp'\'' | sha256sum'`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

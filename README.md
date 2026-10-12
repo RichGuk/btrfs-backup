@@ -145,6 +145,30 @@ can't silently start filling up a directory tree you never meant to write to.
 Create the path once by hand (or by running `btrfs-backup` from a terminal) and
 scheduled runs carry on as normal.
 
+### File Permissions
+
+A backup image is a readable copy of an entire filesystem, so `btrfs-backup`
+writes everything privately rather than relying on the umask of whatever
+account happens to be running it:
+
+| What | Mode |
+| --- | --- |
+| Destination directory, when created | `0700` |
+| Backup images (`.btrfs`, `.btrfs.age`) | `0600` |
+| Checksum sidecars (`.sha256`) | `0600` |
+
+Remote writes set `umask 077` in each SSH command, because the remote login
+shell's umask is not something this tool gets to configure — it's why backups
+used to land as `0644` on the backup host. Local writes set the mode directly.
+
+This only affects files created from now on. To tighten up what's already
+there, on the host holding the backups, as the account that owns them:
+
+```bash
+chmod 700 /data/Backups/Computers/*/
+chmod 600 /data/Backups/Computers/*/*.btrfs*
+```
+
 ### Generating an age Key
 
 ```bash

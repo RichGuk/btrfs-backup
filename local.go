@@ -38,7 +38,7 @@ func (d *localDestination) Prepare(ctx context.Context) error {
 			// Dry run: nothing exists to probe for writability.
 			return nil
 		}
-		if err := os.MkdirAll(d.dir, 0o755); err != nil {
+		if err := os.MkdirAll(d.dir, 0o700); err != nil {
 			return fmt.Errorf("failed to create destination %s: %w", d.dir, err)
 		}
 		if verbose {
@@ -97,7 +97,9 @@ func (d *localDestination) List(ctx context.Context) ([]string, error) {
 func (d *localDestination) Receive(ctx context.Context, name string, stream io.Reader) (string, error) {
 	tmpPath := d.Path(name + tmpSuffix)
 
-	file, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	// 0600: a backup image is a readable copy of an entire filesystem, so it
+	// should not be legible to every account on the machine holding it.
+	file, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return "", fmt.Errorf("failed to create %s: %w", tmpPath, err)
 	}
@@ -151,7 +153,7 @@ func (d *localDestination) Finalise(ctx context.Context, name, checksum string) 
 	}
 
 	sidecar := fmt.Sprintf("%s  %s\n", checksum, name)
-	if err := os.WriteFile(d.Path(name+".sha256"), []byte(sidecar), 0o644); err != nil {
+	if err := os.WriteFile(d.Path(name+".sha256"), []byte(sidecar), 0o600); err != nil {
 		return fmt.Errorf("failed to write checksum file for %s: %w", name, err)
 	}
 

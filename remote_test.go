@@ -101,6 +101,50 @@ func TestSSHPrepareRejectsNonDirectory(t *testing.T) {
 	}
 }
 
+// The remote shell's umask is not ours to control, so every command that
+// creates a file sets its own. Otherwise a backup lands world-readable on the
+// backup host, which is how it behaved before.
+func TestSSHWritesArePrivate(t *testing.T) {
+	withPromptAnswers(t, "y")
+	_, remoteDir := setupTestEnv(t)
+
+	dest := filepath.Join(remoteDir, "backups")
+	cfg := &Config{RemoteHost: "remote", Dest: dest}
+	remote := newDestination(cfg)
+
+	var err error
+	captureStdout(t, func() { err = remote.Prepare(context.Background()) })
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+
+	if mode := statMode(t, dest); mode != 0o700 {
+		t.Errorf("remote destination mode = %04o, want 0700", mode)
+	}
+
+	outfile := "volume-full.btrfs"
+	checksum, err := remote.Receive(context.Background(), outfile, strings.NewReader("payload"))
+	if err != nil {
+		t.Fatalf("Receive: %v", err)
+	}
+
+	if mode := statMode(t, filepath.Join(dest, outfile+".tmp")); mode != 0o600 {
+		t.Errorf("in-flight backup mode = %04o, want 0600", mode)
+	}
+
+	if err := remote.Finalise(context.Background(), outfile, checksum); err != nil {
+		t.Fatalf("Finalise: %v", err)
+	}
+
+	// mv keeps the mode the tee set, so the finished backup stays private.
+	if mode := statMode(t, filepath.Join(dest, outfile)); mode != 0o600 {
+		t.Errorf("finished backup mode = %04o, want 0600", mode)
+	}
+	if mode := statMode(t, filepath.Join(dest, outfile+".sha256")); mode != 0o600 {
+		t.Errorf("checksum sidecar mode = %04o, want 0600", mode)
+	}
+}
+
 func TestSSHFinaliseRenamesWithoutChecksum(t *testing.T) {
 	_, remoteDir := setupTestEnv(t)
 
